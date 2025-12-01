@@ -2,10 +2,14 @@ Package: repulsiveDimples
 Title: What the Package Does (One Line, Title Case)
 Version: 0.0.0.9000
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+    person("Daniel", "Kjellevold", , "daniel.kjellevold@ntnu.no", role = c("aut", "cre"))
+Description: Functions for vortex/dimple data with Matern thinned Cox processes.
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
+Imports: 
+    spatstat.explore,
+    spatstat.geom,
+    spatstat.random,
+    stats
