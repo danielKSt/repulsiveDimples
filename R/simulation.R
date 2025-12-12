@@ -12,6 +12,7 @@
 #' @export
 matern.thinning <- function(initialPattern, repulsionRange, xrange, yrange){
   # Bruk closePairs for å forbetre
+  # Kutt ut ytre kant av vindu i sluttresultatet
   ageMark <- stats::runif(n = nrow(initialPattern))
   initialPattern$age <- ageMark
   df <- initialPattern[order(initialPattern$age), ]
@@ -47,8 +48,11 @@ matern.thinning <- function(initialPattern, repulsionRange, xrange, yrange){
 #'
 #' @export
 rVarGamma_matern_thinned <- function(kappa, scale, mu, nu, repulsionRange, win){
-  unthinned <- spatstat.random::rVarGamma(kappa = kappa, scale = scale, mu = mu, nu = nu, win = win, algorithm = "naive")
+  # I've set algorithm = 'naive' due to some issues with the default for large simulation windows.
+  unthinned <- spatstat.random::rVarGamma(kappa = kappa, scale = scale, mu = mu, nu = nu,
+                                          win = win, algorithm = "naive")
   unthinned <- data.frame(x = unthinned$x, y = unthinned$y)
-  thinned <- matern.thinning(initialPattern = unthinned, repulsionRange = repulsionRange, xrange = win$xrange, yrange = win$yrange)
+  thinned <- matern.thinning(initialPattern = unthinned, repulsionRange = repulsionRange,
+                             xrange = win$xrange, yrange = win$yrange)
   return(spatstat.geom::ppp(x = thinned$x, y = thinned$y, window = win))
 }

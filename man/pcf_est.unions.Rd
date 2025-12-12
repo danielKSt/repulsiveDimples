@@ -5,10 +5,22 @@
 \title{Function for estimating the K-function given a list of point patterns
 The point patterns are assumed to come from a time series of point patterns}
 \usage{
-pcf_est.unions(points_input, l, spacing, rMax, dr, timescale, divisor = "r")
+pcf_est.unions(
+  points_input,
+  bw = NULL,
+  l,
+  spacing,
+  rMax,
+  dr,
+  timescale,
+  divisor = "r",
+  zerocor = NULL
+)
 }
 \arguments{
 \item{points_input}{List of point patterns used for estimation}
+
+\item{bw}{Estimation bandwidth}
 
 \item{l}{Side length of observation window}
 
@@ -21,6 +33,8 @@ pcf_est.unions(points_input, l, spacing, rMax, dr, timescale, divisor = "r")
 \item{timescale}{How many indices apart do snapshots need to be in order to be independent?}
 
 \item{divisor}{See documentation from the spatstat-function pcf.ppp}
+
+\item{zerocor}{See pcf.ppp documentation from spatstat}
 }
 \description{
 Function for estimating the K-function given a list of point patterns

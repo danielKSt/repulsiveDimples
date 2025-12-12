@@ -4,14 +4,30 @@
 \alias{K_theo.exp}
 \title{Estimate K-function with exponential kernel}
 \usage{
-K_theo.exp(r_vec, params, win)
+K_theo.exp(
+  r_vec,
+  params,
+  nSims,
+  win,
+  union_est = FALSE,
+  parallel = TRUE,
+  nCores = 4
+)
 }
 \arguments{
 \item{r_vec}{Vector with radii to use for contrast calculation}
 
-\item{params}{Parameter vector(to be optimized)}
+\item{params}{Parameter vector(to be optimized) should contain (range, intensity, variance, repulsionRange)}
+
+\item{nSims}{Number of simulations for estimation}
 
 \item{win}{Simulation window}
+
+\item{union_est}{Set to TRUE in order to use union approach for estimation of K-function}
+
+\item{parallel}{Set to TRUE to run simulations in parallel}
+
+\item{nCores}{Number of cores for parallel}
 }
 \description{
 To be written

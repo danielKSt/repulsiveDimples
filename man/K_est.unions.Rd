@@ -5,7 +5,15 @@
 \title{Function for estimating the K-function given a list of point patterns
 The point patterns are assumed to come from a time series of point patterns}
 \usage{
-K_est.unions(points_input, l, spacing, rMax, dr, timescale)
+K_est.unions(
+  points_input,
+  l,
+  spacing,
+  rMax = 5,
+  dr = 0.05,
+  r_vec = NULL,
+  timescale
+)
 }
 \arguments{
 \item{points_input}{List of point patterns used for estimation}
@@ -17,6 +25,8 @@ K_est.unions(points_input, l, spacing, rMax, dr, timescale)
 \item{rMax}{Max radius for which estimation is performed}
 
 \item{dr}{How fine grid for estimation?}
+
+\item{r_vec}{Vector to specify which radii to estimate for}
 
 \item{timescale}{How many indices apart do snapshots need to be in order to be independent?}
 }
