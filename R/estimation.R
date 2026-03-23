@@ -45,11 +45,18 @@ K_est.unions <- function(points_input, l, spacing, rMax = 5, dr = 0.05, r_vec = 
     complete_owin <- spatstat.geom::union.owin(complete_owin, spatstat.geom::owin(xrange = c(spacing*t_ind*l,(spacing*t_ind+1)*l), yrange = c(spacing*t_ind*l,(spacing*t_ind+1)*l)))
   }
 
-  combined.points <- points_input[[1]][, 1:2]*l
-  for (t_ind in 1:(length(snapshots)-1)) {
+  first_found <- FALSE
+  t_first <- 0
+  while((!first_found) && (t_first < length(snapshots))){
+    t_first <- t_first + 1
+    first_found <- !is.numeric(points_input[[snapshots[t_first]]])
+  }
+
+  combined.points <- points_input[[snapshots[t_first]]][, 1:2]*l
+  for (t_ind in (t_first+1):length(snapshots)) {
     t <- snapshots[t_ind]
     if(!is.numeric(points_input[[t]])){
-      combined.points <- rbind(combined.points, points_input[[t]][, 1:2]*l + spacing*t_ind*l)
+      combined.points <- rbind(combined.points, points_input[[t]][, 1:2]*l + spacing*(t_ind-1)*l)
       nPoints <- nPoints + length(points_input[[t]]$x)
     }
   }
@@ -119,13 +126,15 @@ find_min_dist <- function(points_input, timescale = 1, l){
   snapshots <- seq(from = 1, to = length(points_input), by = ceiling(timescale))
   for (t in 1:length(snapshots)) {
     current <- points_input[[snapshots[t]]]
-    if(!(is.numeric(current) || nrow(current) < 2)){
-      current$x <- current$x*l
-      current$y <- current$y*l
-      for(i in 1:(length(current$x)-1)){
-        for (j in (i+1):length(current$x)) {
-          dist <- sqrt((current$x[i]-current$x[j])^2+(current$y[i]-current$y[j])^2)
-          res <- min(c(dist,res))
+    if(!(is.null(current))){
+      if(!(is.numeric(current) || nrow(current) < 2)){
+        current$x <- current$x*l
+        current$y <- current$y*l
+        for(i in 1:(length(current$x)-1)){
+          for (j in (i+1):length(current$x)) {
+            dist <- sqrt((current$x[i]-current$x[j])^2+(current$y[i]-current$y[j])^2)
+            res <- min(c(dist,res))
+          }
         }
       }
     }

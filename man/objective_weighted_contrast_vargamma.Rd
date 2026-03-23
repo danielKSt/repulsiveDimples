@@ -17,7 +17,8 @@ objective_weighted_contrast_vargamma(
   p_K = 2,
   nSims,
   win,
-  union_est = FALSE
+  union_est = FALSE,
+  parallel = TRUE
 )
 }
 \arguments{
@@ -46,6 +47,8 @@ objective_weighted_contrast_vargamma(
 \item{win}{Simulation window}
 
 \item{union_est}{Set to TRUE in order to use union approach for estimation of K-function}
+
+\item{parallel}{Set to TRUE to use parallel computing when simulating point patterns for estimation}
 }
 \description{
 Calculate contrast/objective function given params and estimates for the intensity and the K-function from data

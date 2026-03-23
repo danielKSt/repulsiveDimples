@@ -103,18 +103,20 @@ contrast_estimation_vg.constrained <- function(params_init, rho_hat, K_hat, nSim
 #' @param q_K Power to use inside parantheses in contrast for K-function
 #' @param p_K Power to use outside parantheses in contrast for K-function
 #' @param union_est Set to TRUE in order to use union approach for estimation of K-function
+#' @param parallel Set to TRUE to use parallel computing when simulating point patterns for estimation
 #'
 #' @export
 objective_weighted_contrast_vargamma <- function(params, rho_hat, K_hat, repulsionRange_hat,
                                                  w_rho = 1, q_rho = 1, p_rho = 2,
                                                  w_K = 1, q_K = 1/4, p_K = 2,
-                                                 nSims, win, union_est = FALSE){
+                                                 nSims, win, union_est = FALSE,
+                                                 parallel = TRUE){
   if(is.numeric(repulsionRange_hat)){
     params <- c(params, repulsionRange_hat)
   }
   r_vec <- K_hat$r
   simulated_summaries <- K_theo.exp(r_vec = r_vec, params = params, nSims = nSims,
-                                    win = win, union_est = union_est)
+                                    win = win, union_est = union_est, parallel = parallel)
 
   rho_theo <- simulated_summaries$rho_hat
   if(union_est){
@@ -145,14 +147,21 @@ objective_weighted_contrast_vargamma <- function(params, rho_hat, K_hat, repulsi
 #'
 #' @export
 K_theo.exp <- function(r_vec, params, nSims, win, union_est = FALSE, parallel = TRUE, nCores = 4){
-  varphi <- params[1]
-  rho <- params[2]
-  sigmasq <- params[3]
+  varphi <- exp(params[1])
+  rho <- exp(params[2])
+  sigmasq <- exp(params[3])
   kappa <- rho^2/(2*pi*varphi*sigmasq)
   mu <- 2*pi*varphi*sigmasq/rho
   if(parallel){
     sims <- parallel::mclapply(X = rep(kappa, nSims),
-                               FUN = rVarGamma_matern_thinned,
+                               FUN = function(kappa, scale, mu, nu, repulsionRange, win){
+                                 a <-rVarGamma_matern_thinned(kappa = kappa, scale = varphi, mu = mu, nu = -1/4, repulsionRange = params[4], win = win)
+                                 if(a$n > 0){
+                                   return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
+                                 } else {
+                                   return(0)
+                                 }
+                                 },
                                scale = varphi,
                                mu = mu,
                                nu = -1/4,
@@ -160,15 +169,21 @@ K_theo.exp <- function(r_vec, params, nSims, win, union_est = FALSE, parallel = 
                                win = win,
                                mc.cores = nCores)
   } else {
-    sims <- replicate(n = nSims, expr = rVarGamma_matern_thinned(kappa = kappa,
-                                                                 scale = varphi,
-                                                                 mu = mu,
-                                                                 nu = -1/4,
-                                                                 repulsionRange = params[4],
-                                                                 win = win),
+    my_expr <- function(){
+        a <-rVarGamma_matern_thinned(kappa = kappa, scale = varphi, mu = mu, nu = -1/4, repulsionRange = params[4], win = win)
+        if(a$n > 0){
+            return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
+        } else {
+          return(0)
+        }
+      }
+    sims <- replicate(n = nSims,
+                      expr = my_expr(),
                       simplify = FALSE)
   }
-  nTot <- sum(sapply(sims, FUN = function(x){return(x$n)}))
+  nTot <- sum(sapply(sims, FUN = function(x){
+    if(is.numeric(x)){return(0)}
+    else{return(nrow(x))}}))
   if(union_est){
     return(list(K_hat = K_est.unions(points_input = sims,
                                      l = win$xrange[2],

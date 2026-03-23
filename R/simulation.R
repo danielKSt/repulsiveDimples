@@ -51,8 +51,12 @@ rVarGamma_matern_thinned <- function(kappa, scale, mu, nu, repulsionRange, win){
   # I've set algorithm = 'naive' due to some issues with the default for large simulation windows.
   unthinned <- spatstat.random::rVarGamma(kappa = kappa, scale = scale, mu = mu, nu = nu,
                                           win = win, algorithm = "naive")
-  unthinned <- data.frame(x = unthinned$x, y = unthinned$y)
-  thinned <- matern.thinning(initialPattern = unthinned, repulsionRange = repulsionRange,
-                             xrange = win$xrange, yrange = win$yrange)
-  return(spatstat.geom::ppp(x = thinned$x, y = thinned$y, window = win))
+  if(unthinned$n > 1){
+    unthinned <- data.frame(x = unthinned$x, y = unthinned$y)
+    thinned <- matern.thinning(initialPattern = unthinned, repulsionRange = repulsionRange,
+                               xrange = win$xrange, yrange = win$yrange)
+    return(spatstat.geom::ppp(x = thinned$x, y = thinned$y, window = win))
+  } else {
+    return(unthinned)
+  }
 }
