@@ -3,11 +3,11 @@ Title: What the Package Does (One Line, Title Case)
 Version: 0.0.0.9000
 Authors@R: 
     person("Daniel", "Kjellevold", , "daniel.kjellevold@ntnu.no", role = c("aut", "cre"))
-Description: Functions for vortex/dimple data with Matern thinned Cox processes.
+Description: Functions for vortex/dimple data with Matern thinned Cox
+    processes.
 License: MIT + file LICENSE
-Encoding: UTF-8
-Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
+Depends: 
+    R (>= 3.5)
 Imports: 
     ggplot2,
     parallel,
@@ -16,11 +16,13 @@ Imports:
     spatstat.geom,
     spatstat.random,
     stats
-Depends: 
-    R (>= 3.5)
-LazyData: true
 Suggests: 
     knitr,
     rmarkdown,
     rpart
-VignetteBuilder: knitr
+VignetteBuilder: 
+    knitr
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
