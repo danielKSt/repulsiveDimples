@@ -41,7 +41,7 @@ We simulate a list of point patterns to use:
 ```{r simulate_pointPatterns}
 sim_list <- vector(mode = "list", length = 10)
 set.seed(seed = 1349)
-for (i in 1:10) {
+for (i in 1:5) {
   sim_single <- rVarGamma_matern_thinned(kappa = true_params[5],
                                          scale = true_params[1],
                                          mu = true_params[6],
@@ -69,22 +69,18 @@ min_dist <- find_min_dist(points_input = sim_list, l = sidelength, timescale = t
 We run the Minimum Contrast estimation:
 ```{r optimize}
 res <- stats::optim(par = c(1, 1, 1),
-                    fn = objective_weighted_contrast_vargamma,
+                    fn = objective_weighted_contrast,
                     rho_hat = rho_hat,
                     K_hat = K_hat,
-                    repulsionRange_hat = min_dist,
-                    w_rho = 100,
-                    q_rho = 1,
-                    p_rho = 2,
-                    w_K = 2,
-                    q_K = 1/4,
-                    p_K = 2,
+                    params_fixed = c(min_dist),
+                    free_params_indices = c(1, 2, 3),
+                    wpq = c(100, 1, 2, 2, 1/4, 2),
                     union_est = TRUE,
                     win = spatstat.geom::owin(xrange = c(0,10),
                                yrange = c(0,10)),
                     nSims = 20,
                     parallel = FALSE, # Had some issues with the parallel package for vignette building
-                    control = list(maxit = 50)) # Maxit set to something low to knit quickly
+                    control = list(maxit = 5)) # Maxit set to something low to knit quickly
 ```
 
 Having ran the estimation, we look at the resulting parameter estimates:

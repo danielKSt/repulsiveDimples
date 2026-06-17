@@ -60,3 +60,56 @@ rVarGamma_matern_thinned <- function(kappa, scale, mu, nu, repulsionRange, win){
     return(unthinned)
   }
 }
+
+#' Thomas process with Matern II thinning
+#'
+#' @description
+#' Simulates a Variance Gamma SNCP and applies a Matern II thinning to it
+#'
+#'
+#' @param kappa See rThomas in spatstat
+#' @param scale See rThomas in spatstat
+#' @param mu See rThomas in spatstat
+#' @param repulsionRange Range of hard-core repulsion
+#' @param win Simulation window to be used
+#' @param saveparents Logical value indicating whether to save the locations of the parent points as an attribute.
+#'
+#' @export
+rThomas_matern_thinned <- function(kappa, scale, mu, repulsionRange, win, saveparents = FALSE){
+  # I've set algorithm = 'naive' due to some issues with the default for large simulation windows.
+  unthinned <- spatstat.random::rThomas(kappa = kappa, scale = scale, mu = mu,
+                                        win = win, algorithm = "naive",
+                                        saveparents = saveparents)
+
+  expand_parent <- 4*scale
+  B_area <- (win$xrange[2] - win$xrange[1]+2*expand_parent)*(win$yrange[2] - win$yrange[1]+2*expand_parent)
+  if(unthinned$n > 1){
+    if(saveparents){
+      parents <- attr(unthinned, "parents")
+      parents <- data.frame(parents)
+    }
+    unthinned <- data.frame(x = unthinned$x, y = unthinned$y)
+    if(repulsionRange == 0){
+      thinned <- spatstat.geom::ppp(x = unthinned$x, y = unthinned$y, window = win)
+    } else {
+      thinned <- matern.thinning(initialPattern = unthinned, repulsionRange = repulsionRange,
+                                 xrange = win$xrange, yrange = win$yrange)
+      thinned <- spatstat.geom::ppp(x = thinned$x, y = thinned$y, window = win)
+    }
+    if(saveparents){
+      return(list(parent = parents, daughter = unthinned, thinned = thinned,
+                  xlim = win$xrange, ylim = win$yrange, B_area = B_area))
+    } else {
+      return(thinned)
+    }
+  } else {
+    if(saveparents){
+      parents <- attr(unthinned, "parents")
+      parents <- data.frame(parents)
+      return(list(parent = parents, daughter = unthinned, thinned = unthinned,
+                  xlim = win$xrange, ylim = win$yrange, B_area = B_area))
+    } else {
+      return(unthinned)
+    }
+  }
+}

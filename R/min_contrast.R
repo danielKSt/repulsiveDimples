@@ -1,90 +1,3 @@
-# Variance gamma contrast fitting ----
-
-#' Minimal contrast for unconstrained estimation with thinned varGamma
-#' @description
-#' Use minimal contrast estimation together with Monte Carlo calculations for K_theo for parameter estimation for Matern thinned VarGamma
-#'
-#'
-#' @param params_init Initial guess for parameter vector
-#' @param rho_hat Intensity estimated from data
-#' @param K_hat K-function estimated from data
-#' @param repulsionRange_hat Set to FALSE if the repulsion range parameter is in the params vector
-#' @param win Simulation window
-#' @param nSims How many simulations to estimate K_hat
-#' @param union_est Set to TRUE in order to use union approach for estimation of K-function
-#' @param w_rho Weight of intensity
-#' @param q_rho Power to use inside parantheses in contrast for intensity
-#' @param p_rho Power to use outside parantheses in contrast for intensity
-#' @param w_K Weight of K-function
-#' @param q_K Power to use inside parantheses in contrast for K-function
-#' @param p_K Power to use outside parantheses in contrast for K-function
-#'
-#' @export
-contrast_estimation_vg.unconstrained <- function(params_init, rho_hat, K_hat, repulsionRange_hat,
-                                                 nSims, win, union_est = FALSE,
-                                                 w_rho = 1, q_rho = 1, p_rho = 2,
-                                                 w_K = 2, q_K = 1/4, p_K = 2){
-  res <- stats::optim(par = params_init,
-               fn = objective_weighted_contrast_vargamma,
-               rho_hat = rho_hat,
-               K_hat = K_hat,
-               repulsionRange_hat = repulsionRange_hat,
-               w_rho = w_rho,
-               q_rho = q_rho,
-               p_rho = p_rho,
-               w_K = w_K,
-               q_K = q_K,
-               p_K = p_K,
-               union_est = union_est,
-               win = win,
-               nSims = nSims)
-  return(res)
-}
-
-#' Minimal contrast for constrained estimation with thinned varGamma
-#' @description
-#' Use minimal contrast estimation together with Monte Carlo calculations for K_theo for parameter estimation for Matern thinned VarGamma, with linear constraints on the parameters.
-#' The parameter vector should be of the form (clusterRange, unthinnedIntensity, sigmaSquared, repulsionRange)
-#'
-#'
-#' @param params_init Initial guess for parameter vector
-#' @param rho_hat Intensity estimated from data
-#' @param K_hat K-function estimated from data
-#' @param win Simulation window
-#' @param nSims How many simulations to estimate K_hat
-#' @param union_est Set to TRUE in order to use union approach for estimation of K-function
-#' @param ui constraint matrix(see constrOptim documentation)
-#' @param ci constraint vector(see constrOptim documentation)
-#' @param w_rho Weight of intensity
-#' @param q_rho Power to use inside parantheses in contrast for intensity
-#' @param p_rho Power to use outside parantheses in contrast for intensity
-#' @param w_K Weight of K-function
-#' @param q_K Power to use inside parantheses in contrast for K-function
-#' @param p_K Power to use outside parantheses in contrast for K-function
-#'
-#' @export
-contrast_estimation_vg.constrained <- function(params_init, rho_hat, K_hat, nSims, win, union_est, ui, ci,
-                                                 w_rho = 1, q_rho = 1, p_rho = 2, w_K = 2, q_K = 1/4, p_K = 2){
-  res <- stats::constrOptim(theta = params_init,
-                      f = objective_weighted_contrast_vargamma,
-                      ui = ui,
-                      ci = ci,
-                      rho_hat = rho_hat,
-                      K_hat = K_hat,
-                      repulsionRange_hat = FALSE,
-                      w_rho = w_rho,
-                      q_rho = q_rho,
-                      p_rho = p_rho,
-                      w_K = w_K,
-                      q_K = q_K,
-                      p_K = p_K,
-                      union_est = union_est,
-                      win = win,
-                      nSims = nSims)
-  return(res)
-}
-
-
 #' Objective function for minimum contrast
 #' @description
 #' Calculate contrast/objective function given params and estimates for the intensity and the K-function from data
@@ -93,30 +6,44 @@ contrast_estimation_vg.constrained <- function(params_init, rho_hat, K_hat, nSim
 #' @param params Parameter vector(to be optimized)
 #' @param rho_hat Intensity estimated from data
 #' @param K_hat K-function estimated from data
-#' @param repulsionRange_hat Set to FALSE if the repulsion range parameter is in the params vector
+#' @param params_fixed Values for the fixed parameters
+#' @param free_params_indices Which indices for the parameter vector are free?
 #' @param win Simulation window
 #' @param nSims How many simulations to estimate K_hat
-#' @param w_rho Weight of intensity
-#' @param q_rho Power to use inside parantheses in contrast for intensity
-#' @param p_rho Power to use outside parantheses in contrast for intensity
-#' @param w_K Weight of K-function
-#' @param q_K Power to use inside parantheses in contrast for K-function
-#' @param p_K Power to use outside parantheses in contrast for K-function
+#' @param wpq Vector of weights and powers (w_rho, q_rho, p_rho, w_K, q_K, p_K)
+#' @param ns_kernel String indicating which kernel to use for the Neymann-Scott process, "var_gamma" or "thomas"
 #' @param union_est Set to TRUE in order to use union approach for estimation of K-function
 #' @param parallel Set to TRUE to use parallel computing when simulating point patterns for estimation
 #'
 #' @export
-objective_weighted_contrast_vargamma <- function(params, rho_hat, K_hat, repulsionRange_hat,
-                                                 w_rho = 1, q_rho = 1, p_rho = 2,
-                                                 w_K = 1, q_K = 1/4, p_K = 2,
+objective_weighted_contrast <- function(params, rho_hat, K_hat, params_fixed, free_params_indices = NULL,
+                                                 wpq = c(1, 1, 2, 1, 1/4, 2),
+                                                 ns_kernel = "var_gamma",
                                                  nSims, win, union_est = FALSE,
                                                  parallel = TRUE){
-  if(is.numeric(repulsionRange_hat)){
-    params <- c(params, repulsionRange_hat)
+  if(!is.null(free_params_indices)){
+    params_temp <- c(1:(length(params)+length(params_fixed)))
+    params_temp[free_params_indices] <- params
+    params <- params_temp
+    params[-free_params_indices] <- params_fixed
+    rm(params_temp)
   }
+
+  # if(is.numeric(repulsionRange_hat)){
+  #   params <- c(params, repulsionRange_hat)
+  # }
   r_vec <- K_hat$r
-  simulated_summaries <- K_theo.exp(r_vec = r_vec, params = params, nSims = nSims,
-                                    win = win, union_est = union_est, parallel = parallel)
+  if(ns_kernel == "var_gamma"){
+    simulated_summaries <- K_theo.var_gamma(r_vec = r_vec, params = params, nSims = nSims,
+                                            win = win, union_est = union_est, parallel = parallel)
+  } else if(ns_kernel == "thomas"){
+    simulated_summaries <- K_theo.var_gamma(r_vec = r_vec, params = params, nSims = nSims,
+                                            win = win, union_est = union_est, parallel = parallel)
+  } else {
+    simulated_summaries <- K_theo.var_gamma(r_vec = r_vec, params = params, nSims = nSims,
+                                            win = win, union_est = union_est, parallel = parallel)
+  }
+
 
   rho_theo <- simulated_summaries$rho_hat
   if(union_est){
@@ -126,13 +53,81 @@ objective_weighted_contrast_vargamma <- function(params, rho_hat, K_hat, repulsi
   }
 
   dr <- r_vec[2] - r_vec[1]
-  contrast_K <- sum(abs(K_hat$border[which(!is.na(K_theo_est))]^q_K - K_theo_est[which(!is.na(K_theo_est))]^q_K)^p_K)*dr
-  contrast_rho <- abs(rho_theo^q_rho - rho_hat^q_rho)^p_rho
+  contrast_K <- sum(abs(K_hat$border[which(!is.na(K_theo_est))]^wpq[6] - K_theo_est[which(!is.na(K_theo_est))]^wpq[6])^wpq[5])*dr
+  contrast_rho <- abs(rho_theo^wpq[3] - rho_hat^wpq[3])^wpq[2]
 
-  return(w_rho*contrast_rho + w_K*contrast_K)
+  return(wpq[1]*contrast_rho + wpq[4]*contrast_K)
 }
 
-#' Estimate K-function with exponential kernel
+#' Estimate K-function for variance gamma point pattern
+#' @description
+#' To be written
+#'
+#' @param params Parameter vector(to be optimized) should contain (range, intensity, variance, repulsionRange)
+#' @param r_vec Vector with radii to use for contrast calculation
+#' @param nSims Number of simulations for estimation
+#' @param win Simulation window
+#' @param parallel Set to TRUE to run simulations in parallel
+#' @param nCores Number of cores for parallel
+#' @param union_est Set to TRUE in order to use union approach for estimation of K-function
+#'
+#' @export
+K_theo.var_gamma <- function(r_vec, params, nSims, win, union_est = FALSE, parallel = TRUE, nCores = 4){
+  varphi <- exp(params[1])
+  rho <- exp(params[2])
+  sigmasq <- exp(params[3])
+  kappa <- rho^2/(2*pi*varphi*sigmasq)
+  mu <- 2*pi*varphi*sigmasq/rho
+  rRange <- exp(params[4])
+  if(parallel){
+    sims <- parallel::mclapply(X = rep(kappa, nSims),
+                               FUN = function(kappa, scale, mu, nu, rRange, win){
+                                 a <-rVarGamma_matern_thinned(kappa = kappa, scale = varphi, mu = mu, nu = -1/4,
+                                                              repulsionRange = rRange, win = win)
+                                 if(a$n > 0){
+                                   return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
+                                 } else {
+                                   return(0)
+                                 }
+                                 },
+                               scale = varphi,
+                               mu = mu,
+                               nu = -1/4,
+                               rRange = rRange,
+                               win = win,
+                               mc.cores = nCores)
+  } else {
+    my_expr <- function(){
+        a <-rVarGamma_matern_thinned(kappa = kappa, scale = varphi, mu = mu, nu = -1/4,
+                                     repulsionRange = rRange, win = win)
+        if(a$n > 0){
+            return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
+        } else {
+          return(0)
+        }
+      }
+    sims <- replicate(n = nSims,
+                      expr = my_expr(),
+                      simplify = FALSE)
+  }
+  nTot <- sum(sapply(sims, FUN = function(x){
+    if(is.numeric(x)){return(0)}
+    else{return(nrow(x))}}))
+  if(union_est){
+    return(list(K_hat = K_est.unions(points_input = sims,
+                                     l = win$xrange[2],
+                                     spacing = 5,
+                                     r_vec = r_vec,
+                                     timescale = 1),
+                rho_hat = nTot/(spatstat.geom::area(win)*nSims)))
+  } else {
+    Keach <- lapply(sims, spatstat.explore::Kest, r = r_vec)
+    return(list(K_hat = spatstat.explore::pool(spatstat.geom::as.anylist(Keach)),
+                rho_hat = nTot/(spatstat.geom::area(win)*nSims)))
+  }
+}
+
+#' Estimate K-function for thinned Thomas process
 #' @description
 #' To be written
 #'
@@ -146,37 +141,37 @@ objective_weighted_contrast_vargamma <- function(params, rho_hat, K_hat, repulsi
 #' @param union_est Set to TRUE in order to use union approach for estimation of K-function
 #'
 #' @export
-K_theo.exp <- function(r_vec, params, nSims, win, union_est = FALSE, parallel = TRUE, nCores = 4){
-  varphi <- exp(params[1])
-  rho <- exp(params[2])
-  sigmasq <- exp(params[3])
-  kappa <- rho^2/(2*pi*varphi*sigmasq)
-  mu <- 2*pi*varphi*sigmasq/rho
+K_theo.thomas <- function(r_vec, params, nSims, win, union_est = FALSE, parallel = TRUE, nCores = 4){
+  mom_rho <- exp(params[1])
+  omega <- exp(params[2])
+  mu <- exp(params[3])
+  rRange <- exp(params[4])
   if(parallel){
     sims <- parallel::mclapply(X = rep(kappa, nSims),
-                               FUN = function(kappa, scale, mu, nu, repulsionRange, win){
-                                 a <-rVarGamma_matern_thinned(kappa = kappa, scale = varphi, mu = mu, nu = -1/4, repulsionRange = params[4], win = win)
+                               FUN = function(mom_rho, omega, mu, rRange, win){
+                                 a <-rThomas_matern_thinned(kappa = mom_rho, scale = omega,
+                                                            mu = mu, repulsionRange = rRange, win = win)
                                  if(a$n > 0){
                                    return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
                                  } else {
                                    return(0)
                                  }
-                                 },
-                               scale = varphi,
+                               },
+                               scale = omega,
                                mu = mu,
-                               nu = -1/4,
-                               repulsionRange = params[4],
+                               repulsionRange = rRange,
                                win = win,
                                mc.cores = nCores)
   } else {
     my_expr <- function(){
-        a <-rVarGamma_matern_thinned(kappa = kappa, scale = varphi, mu = mu, nu = -1/4, repulsionRange = params[4], win = win)
-        if(a$n > 0){
-            return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
-        } else {
-          return(0)
-        }
+      a <-rThomas_matern_thinned(kappa = mom_rho, scale = omega, mu = mu,
+                                 repulsionRange = rRange, win = win)
+      if(a$n > 0){
+        return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
+      } else {
+        return(0)
       }
+    }
     sims <- replicate(n = nSims,
                       expr = my_expr(),
                       simplify = FALSE)

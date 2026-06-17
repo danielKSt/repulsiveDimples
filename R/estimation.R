@@ -64,9 +64,9 @@ K_est.unions <- function(points_input, l, spacing, rMax = 5, dr = 0.05, r_vec = 
   combined.points <- spatstat.geom::ppp(x = combined.points$x, y = combined.points$y, window = complete_owin)
 
   if(is.null(r_vec)){
-    return(spatstat.explore::Kest(combined.points, r = seq(from = 0, to = rMax, by = dr)))
+    return(spatstat.explore::Kest(combined.points, r = seq(from = 0, to = rMax, by = dr), correction = c("border")))
   } else {
-    return(spatstat.explore::Kest(combined.points, r = r_vec))
+    return(spatstat.explore::Kest(combined.points, r = r_vec, correction = c("border")))
   }
 }
 
