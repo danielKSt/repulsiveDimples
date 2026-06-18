@@ -114,7 +114,8 @@ K_lambda_importance_sampling <- function(w_is, patternSim, K_baseline = NULL,
 #'
 #' @export
 estimate_K_lambda_baseline <- function(pattern, r_vec){
-  border <- sapply(r_vec, K_lambda_specific_r, pattern)
+  #border <- sapply(r_vec, K_lambda_specific_r, pattern)
+  border <- simplify2array(parallel::mclapply(r_vec, K_lambda_specific_r, pattern))
   return(data.frame(r = r_vec, border = border))
 }
 
@@ -146,17 +147,6 @@ K_lambda_specific_r <- function(r, pattern){
   res <- sum(1 / ((xlim2 - abs(dx_sel)) * (ylim2 - abs(dy_sel))))
 
   return(2 * res)
-  # res <- 0
-  # for(i in 1:(pattern$thinned$n-1)){
-  #   for(j in (i+1):pattern$thinned$n){
-  #     dx <- pattern$thinned$x[i] - pattern$thinned$x[j]
-  #     dy <- pattern$thinned$y[i] - pattern$thinned$y[j]
-  #     if((dx)^2+(dy)^2 < r^2){
-  #       res <- res + 1/((pattern$xlim[2] - abs(dx))*(pattern$ylim[2] - abs(dy)))
-  #     }
-  #   }
-  # }
-  # return(2*res)
 }
 
 
