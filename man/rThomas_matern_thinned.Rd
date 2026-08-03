@@ -9,7 +9,8 @@ rThomas_matern_thinned(
   scale,
   mu,
   repulsionRange,
-  win,
+  xlims,
+  ylims,
   saveparents = FALSE
 )
 }
@@ -22,7 +23,9 @@ rThomas_matern_thinned(
 
 \item{repulsionRange}{Range of hard-core repulsion}
 
-\item{win}{Simulation window to be used}
+\item{xlims}{xlim}
+
+\item{ylims}{ylim}
 
 \item{saveparents}{Logical value indicating whether to save the locations of the parent points as an attribute.}
 }

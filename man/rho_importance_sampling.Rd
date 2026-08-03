@@ -6,17 +6,17 @@
 \usage{
 rho_importance_sampling(
   w_is,
-  patternSim,
-  rho_baseline = NULL,
+  rho_baseline,
+  patternSim = NULL,
   normalized = FALSE
 )
 }
 \arguments{
 \item{w_is}{Importance sampling weights}
 
-\item{patternSim}{List of point patterns to use for estimation}
-
 \item{rho_baseline}{rho_baseline}
+
+\item{patternSim}{List of point patterns to use for estimation}
 
 \item{normalized}{Set to TRUE if you want to normalize the importance sampling ratios}
 }

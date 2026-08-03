@@ -13,7 +13,8 @@ importance_sampling_weigths(
   omega_0 = NULL,
   patternSim,
   log_f_kappa_0 = NULL,
-  log_fCond_theta_0 = NULL
+  log_fCond_theta_0 = NULL,
+  parallel = FALSE
 )
 }
 \arguments{
@@ -34,6 +35,8 @@ importance_sampling_weigths(
 \item{log_f_kappa_0}{Parent null density}
 
 \item{log_fCond_theta_0}{Daughter null density}
+
+\item{parallel}{Set to TRUE to use parallel computing}
 }
 \description{
 Use importance sampling to estimate the Ripleys' K-function for parameter values

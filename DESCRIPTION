@@ -10,6 +10,8 @@ Depends:
     R (>= 3.5)
 Imports: 
     ggplot2,
+    graphics,
+    mcprogress,
     parallel,
     rlang,
     spatstat.explore,

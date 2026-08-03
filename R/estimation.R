@@ -125,16 +125,12 @@ find_min_dist <- function(points_input, timescale = 1, l){
   res <- l
   snapshots <- seq(from = 1, to = length(points_input), by = ceiling(timescale))
   for (t in 1:length(snapshots)) {
-    current <- points_input[[snapshots[t]]]
-    if(!(is.null(current))){
-      if(!(is.numeric(current) || nrow(current) < 2)){
-        current$x <- current$x*l
-        current$y <- current$y*l
-        for(i in 1:(length(current$x)-1)){
-          for (j in (i+1):length(current$x)) {
-            dist <- sqrt((current$x[i]-current$x[j])^2+(current$y[i]-current$y[j])^2)
-            res <- min(c(dist,res))
-          }
+    current <- points_input[[snapshots[t]]]$thinned
+    if(nrow(current) > 2){
+      for(i in 1:(length(current$x)-1)){
+        for (j in (i+1):length(current$x)) {
+          dist <- sqrt((current$x[i]-current$x[j])^2+(current$y[i]-current$y[j])^2)
+          res <- min(c(dist,res))
         }
       }
     }

@@ -6,20 +6,20 @@
 \usage{
 K_lambda_importance_sampling(
   w_is,
-  patternSim,
-  K_baseline = NULL,
+  K_lambda_baseline,
   r_vec = NULL,
+  patternSim = NULL,
   normalized = FALSE
 )
 }
 \arguments{
 \item{w_is}{Importance sampling weights}
 
-\item{patternSim}{List of point patterns to use for estimation}
-
-\item{K_baseline}{K_baseline}
+\item{K_lambda_baseline}{K_lambda_baseline}
 
 \item{r_vec}{r_vec}
+
+\item{patternSim}{List of point patterns to use for estimation}
 
 \item{normalized}{Set to TRUE if you want to normalize the importance sampling ratios}
 }

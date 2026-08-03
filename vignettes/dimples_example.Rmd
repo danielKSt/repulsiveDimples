@@ -25,45 +25,45 @@ timescale <- turbulence$timescale
 ```
 
 ```{r hat_estimation}
-rho_hat <- intensity_est(points_input = dimples, l = sidelength, timescale = timescale)
-K_hat <- K_est.unions(points_input = dimples,
-                     l = sidelength,
-                     timescale = timescale,
-                     spacing = 5,
-                     rMax = 4,
-                     dr = 0.05)
-
-min_dist <- find_min_dist(points_input = dimples, l = sidelength, timescale = timescale)
+# rho_hat <- intensity_est(points_input = dimples, l = sidelength, timescale = timescale)
+# K_hat <- K_est.unions(points_input = dimples,
+#                      l = sidelength,
+#                      timescale = timescale,
+#                      spacing = 5,
+#                      rMax = 4,
+#                      dr = 0.05)
+# 
+# min_dist <- find_min_dist(points_input = dimples, l = sidelength, timescale = timescale)
 ```
 
 ```{r param_estimation}
 params_init <- c(log(0.8), log(3), log(80))
-res <- stats::optim(par = params_init,
-                    fn = objective_weighted_contrast,
-                    rho_hat = rho_hat,
-                    K_hat = K_hat,
-                    params_fixed = c(min_dist),
-                    free_params_indices = c(1, 2, 3),
-                    wpq = c(100, 1, 2, 2, 1/4, 2),
-                    union_est = TRUE,
-                    win = spatstat.geom::owin(xrange = c(0,10),
-                               yrange = c(0,10)),
-                    nSims = 20,
-                    parallel = FALSE, # Had some issues with the parallel package for vignette building
-                    control = list(maxit = 5)) # Maxit set to something low to knit quickly
+# res <- stats::optim(par = params_init,
+#                     fn = objective_weighted_contrast,
+#                     rho_hat = rho_hat,
+#                     K_hat = K_hat,
+#                     params_fixed = c(min_dist),
+#                     free_params_indices = c(1, 2, 3),
+#                     wpq = c(100, 1, 2, 2, 1/4, 2),
+#                     union_est = TRUE,
+#                     win = spatstat.geom::owin(xrange = c(0,10),
+#                                yrange = c(0,10)),
+#                     nSims = 20,
+#                     parallel = FALSE, # Had some issues with the parallel package for vignette building
+#                     control = list(maxit = 5)) # Maxit set to something low to knit quickly
 ```
 
 ```{r look_at_estimates}
-estim_phi <- exp(res$par[1])
-estim_rho <- exp(res$par[2])
-estim_sigmasq <- exp(res$par[3])
-estim_repulsionRange <- min_dist
-estim_kappa <- estim_rho^2/(2*pi*estim_phi*estim_sigmasq)
-estim_mu <- 2*pi*estim_phi*estim_sigmasq/estim_rho
-
-estim_params <- c(estim_phi, estim_rho, estim_sigmasq, estim_repulsionRange, estim_kappa, estim_mu)
-setNames(estim_params, c("phi", "rho", "sigmasq", "h", "kappa", "mu"))
-rm(estim_phi, estim_rho, estim_sigmasq, estim_repulsionRange, estim_kappa, estim_mu)
+# estim_phi <- exp(res$par[1])
+# estim_rho <- exp(res$par[2])
+# estim_sigmasq <- exp(res$par[3])
+# estim_repulsionRange <- min_dist
+# estim_kappa <- estim_rho^2/(2*pi*estim_phi*estim_sigmasq)
+# estim_mu <- 2*pi*estim_phi*estim_sigmasq/estim_rho
+# 
+# estim_params <- c(estim_phi, estim_rho, estim_sigmasq, estim_repulsionRange, estim_kappa, estim_mu)
+# setNames(estim_params, c("phi", "rho", "sigmasq", "h", "kappa", "mu"))
+# rm(estim_phi, estim_rho, estim_sigmasq, estim_repulsionRange, estim_kappa, estim_mu)
 ```
 
 

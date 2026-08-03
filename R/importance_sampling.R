@@ -1,23 +1,3 @@
-
-#' Use importance sampling to evaluate the contrast function
-#' @description
-#' A short description...
-#'
-#' @param patternSim List of point patterns to use for estimation
-#' @param K_hat estimated K-function for data
-#' @param rho_hat Estimated intensity for data
-#' @param wqp Weights for contrast function
-#'
-#' @export
-contrast_function_importance_sampling <- function(patternSim, K_hat, rho_hat, wqp = c(1, 1, 1, 1, 1/4, 2)){
-  K_est <- K_importance_sampling()
-  rho_est <- rho_importance_sampling()
-
-  K_res <- sum(abs(K_est$K^wqp[5] - K_hat$K^wqp[5])^wqp[6])*(K_hat$r[2]-K_hat$r[1])
-  rho_res <- abs(rho_est^wqp[2]-rho_est^wqp[2])^wqp[3]
-  return(wqp[1]*rho_res+wqp[4]*K_res)
-}
-
 #' Use importance sampling to estimate the K-function
 #' @description
 #' Use importance sampling to estimate the Ripleys' K-function for parameter values
@@ -32,13 +12,18 @@ contrast_function_importance_sampling <- function(patternSim, K_hat, rho_hat, wq
 #' @param log_f_kappa_0 Parent null density
 #' @param log_fCond_theta_0 Daughter null density
 #' @param patternSim List of point patterns to use for estimation
+#' @param parallel Set to TRUE to use parallel computing
 #'
 #' @export
 importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 = NULL, omega_0 = NULL,
-                                        patternSim, log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL){
+                                        patternSim, log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL,
+                                        parallel = FALSE){
   if(is.null(log_f_kappa_0)){
-    log_f_kappa_0 <- sapply(X = patternSim, FUN = parent_log_density,
-                            kappa = kappa_0)
+    if(parallel){
+      log_f_kappa_0 <- parallel::mclapply(X = patternSim, FUN = parent_log_density, kappa = kappa_0)
+    } else {
+      log_f_kappa_0 <- sapply(X = patternSim, FUN = parent_log_density, kappa = kappa_0)
+    }
   }
   if(is.null(log_fCond_theta_0)){
     log_fCond_theta_0 <- sapply(X = patternSim, FUN = thomas_daughter_log_density,
@@ -59,16 +44,18 @@ importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 =
 #'
 #' @param w_is Importance sampling weights
 #' @param patternSim List of point patterns to use for estimation
-#' @param K_baseline K_baseline
+#' @param K_lambda_baseline K_lambda_baseline
 #' @param r_vec r_vec
+#' @param rho_baseline rho_baseline
 #' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
 #'
 #' @export
-K_importance_sampling <- function(w_is, patternSim, K_baseline = NULL,
-                                  r_vec = NULL, normalized = FALSE){
+K_importance_sampling <- function(w_is, K_lambda_baseline, rho_baseline,
+                                  r_vec = NULL, patternSim = NULL, normalized = FALSE){
 
-  K_lambda <- K_lambda_importance_sampling(w_is, patternSim, K_baseline, r_vec)
-  lambda_squared <- rho_importance_sampling(w_is, patternSim, normalized = normalized)^2
+  K_lambda <- K_lambda_importance_sampling(w_is, K_lambda_baseline, r_vec, patternSim, normalized)
+  lambda_squared <- rho_importance_sampling(w_is, patternSim = patternSim,
+                                            rho_baseline = rho_baseline, normalized = normalized)^2
 
   K_res <- K_lambda
   K_res$border <- K_res$border/lambda_squared
@@ -81,26 +68,28 @@ K_importance_sampling <- function(w_is, patternSim, K_baseline = NULL,
 #'
 #' @param w_is Importance sampling weights
 #' @param patternSim List of point patterns to use for estimation
-#' @param K_baseline K_baseline
+#' @param K_lambda_baseline K_lambda_baseline
 #' @param r_vec r_vec
 #' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
 #'
 #' @export
-K_lambda_importance_sampling <- function(w_is, patternSim, K_baseline = NULL,
-                                         r_vec = NULL, normalized = FALSE){
-  if(is.null(K_baseline)){
-    K_baseline <- lapply(patternSim, estimate_K_lambda_baseline, r_vec = r_vec)
+K_lambda_importance_sampling <- function(w_is, K_lambda_baseline, r_vec = NULL,
+                                         patternSim = NULL, normalized = FALSE){
+  if(is.null(K_lambda_baseline)){
+    K_lambda_baseline <- lapply(patternSim, estimate_K_lambda_baseline, r_vec = r_vec)
   }
-  K_res <- K_baseline[[1]]
+
+  K_res <- K_lambda_baseline[[1]]
   if(normalized){
     w_is <- w_is/sum(w_is)
   }
-  K_res$border <- K_baseline[[1]]$border*w_is[1]
-  for (i in 1:length(K_baseline)) {
-    K_res$border <- K_res$border + K_baseline[[i]]$border*w_is[i]
+
+  K_res$border <- K_lambda_baseline[[1]]$border*w_is[1]
+  for (i in 1:length(K_lambda_baseline)) {
+    K_res$border <- K_res$border + K_lambda_baseline[[i]]$border*w_is[i]
   }
   if(!normalized){
-    K_res$border <- K_res$border/length(K_baseline)
+    K_res$border <- K_res$border/length(K_lambda_baseline)
   }
   return(K_res)
 }
@@ -129,9 +118,11 @@ estimate_K_lambda_baseline <- function(pattern, r_vec){
 K_lambda_specific_r <- function(r, pattern){
   x     <- pattern$thinned$x
   y     <- pattern$thinned$y
-  n     <- pattern$thinned$n
-  xlim2 <- pattern$xlim[2]
-  ylim2 <- pattern$ylim[2]
+  n     <- nrow(pattern$thinned)
+  xlim1 <- pattern$xlim_thinned[1]
+  xlim2 <- pattern$xlim_thinned[2]
+  ylim1 <- pattern$ylim_thinned[1]
+  ylim2 <- pattern$ylim_thinned[2]
 
   # Compute all n×n pairwise difference matrices at once
   dx <- outer(x, x, "-")
@@ -144,7 +135,7 @@ K_lambda_specific_r <- function(r, pattern){
   dx_sel <- dx[mask]
   dy_sel <- dy[mask]
 
-  res <- sum(1 / ((xlim2 - abs(dx_sel)) * (ylim2 - abs(dy_sel))))
+  res <- sum(1 / ((xlim2 - xlim1 - abs(dx_sel)) * (ylim2 - ylim1 - abs(dy_sel))))
 
   return(2 * res)
 }
@@ -161,7 +152,7 @@ K_lambda_specific_r <- function(r, pattern){
 #' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
 #'
 #' @export
-rho_importance_sampling <- function(w_is, patternSim, rho_baseline = NULL, normalized = FALSE){
+rho_importance_sampling <- function(w_is, rho_baseline, patternSim = NULL, normalized = FALSE){
   if(is.null(rho_baseline)){
     rho_baseline <- sapply(patternSim, estimate_rho_baseline)
   }
@@ -183,8 +174,8 @@ rho_importance_sampling <- function(w_is, patternSim, rho_baseline = NULL, norma
 #'
 #' @export
 estimate_rho_baseline <- function(pattern){
-  return(pattern$thinned$n/
-           ((pattern$xlim[2] - pattern$xlim[1])*(pattern$ylim[2] - pattern$ylim[1])))
+  return(nrow(pattern$thinned)/
+           ((pattern$xlim_thinned[2] - pattern$xlim_thinned[1])*(pattern$ylim_thinned[2] - pattern$ylim_thinned[1])))
 }
 
 #' Calculate Poisson density of a parent process
@@ -204,11 +195,12 @@ estimate_rho_baseline <- function(pattern){
 #'
 #' @export
 parent_log_density <- function(pattern = NULL, kappa, parent = NULL, B_area = NULL){
-  if(!is.null(pattern)){
-    return(return(pattern$B_area*(1-kappa) + nrow(pattern$parent)*log(kappa)))
-  } else {
-    return(B_area*(1-kappa) + nrow(parent)*log(kappa))
-  }
+  return(pattern$B_area*(1-kappa) + nrow(pattern$parent)*log(kappa))
+  # if(!is.null(pattern)){
+  #   return(pattern$B_area*(1-kappa) + nrow(pattern$parent)*log(kappa))
+  # } else {
+  #   return(B_area*(1-kappa) + nrow(parent)*log(kappa))
+  # }
 }
 
 #' Log-density of the daughter pattern given parents for a Thomas cluster process
@@ -250,15 +242,18 @@ thomas_daughter_log_density <- function(pattern = NULL, mu, omega,
   if(!is.null(pattern)){
     parent <- pattern$parent
     daughter <- pattern$daughter
-    xlim <- pattern$xlim
-    ylim <- pattern$ylim
+    xlim <- pattern$xlim_unthinned
+    ylim <- pattern$ylim_unthinned
   }
   area_W <- (xlim[2] - xlim[1]) * (ylim[2]-ylim[1])
 
-  p_W <- (stats::pnorm(xlim[2], mean = parent$x, sd = omega) - stats::pnorm(xlim[1], mean = parent$x, sd = omega)) *
-    (stats::pnorm(ylim[2], mean = parent$y, sd = omega) - stats::pnorm(ylim[1], mean = parent$y, sd = omega))
+  norm_term <- 0
+  if(nrow(parent) > 0){
+    p_W <- (stats::pnorm(xlim[2], mean = parent$x, sd = omega) - stats::pnorm(xlim[1], mean = parent$x, sd = omega)) *
+      (stats::pnorm(ylim[2], mean = parent$y, sd = omega) - stats::pnorm(ylim[1], mean = parent$y, sd = omega))
 
-  norm_term <- mu * sum(p_W)
+    norm_term <- mu * sum(p_W)
+  }
 
   log_prod_term <- 0
   if (nrow(daughter) > 0) {

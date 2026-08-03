@@ -21,42 +21,43 @@ objective_weighted_contrast <- function(params, rho_hat, K_hat, params_fixed, fr
                                                  ns_kernel = "var_gamma",
                                                  nSims, win, union_est = FALSE,
                                                  parallel = TRUE){
-  if(!is.null(free_params_indices)){
-    params_temp <- c(1:(length(params)+length(params_fixed)))
-    params_temp[free_params_indices] <- params
-    params <- params_temp
-    params[-free_params_indices] <- params_fixed
-    rm(params_temp)
-  }
-
-  # if(is.numeric(repulsionRange_hat)){
-  #   params <- c(params, repulsionRange_hat)
+  return(0)
+  # if(!is.null(free_params_indices)){
+  #   params_temp <- c(1:(length(params)+length(params_fixed)))
+  #   params_temp[free_params_indices] <- params
+  #   params <- params_temp
+  #   params[-free_params_indices] <- params_fixed
+  #   rm(params_temp)
   # }
-  r_vec <- K_hat$r
-  if(ns_kernel == "var_gamma"){
-    simulated_summaries <- K_theo.var_gamma(r_vec = r_vec, params = params, nSims = nSims,
-                                            win = win, union_est = union_est, parallel = parallel)
-  } else if(ns_kernel == "thomas"){
-    simulated_summaries <- K_theo.var_gamma(r_vec = r_vec, params = params, nSims = nSims,
-                                            win = win, union_est = union_est, parallel = parallel)
-  } else {
-    simulated_summaries <- K_theo.var_gamma(r_vec = r_vec, params = params, nSims = nSims,
-                                            win = win, union_est = union_est, parallel = parallel)
-  }
-
-
-  rho_theo <- simulated_summaries$rho_hat
-  if(union_est){
-    K_theo_est <- simulated_summaries$K_hat$border
-  } else {
-    K_theo_est <- simulated_summaries$K_hat$poolborder
-  }
-
-  dr <- r_vec[2] - r_vec[1]
-  contrast_K <- sum(abs(K_hat$border[which(!is.na(K_theo_est))]^wpq[6] - K_theo_est[which(!is.na(K_theo_est))]^wpq[6])^wpq[5])*dr
-  contrast_rho <- abs(rho_theo^wpq[3] - rho_hat^wpq[3])^wpq[2]
-
-  return(wpq[1]*contrast_rho + wpq[4]*contrast_K)
+  #
+  # # if(is.numeric(repulsionRange_hat)){
+  # #   params <- c(params, repulsionRange_hat)
+  # # }
+  # r_vec <- K_hat$r
+  # if(ns_kernel == "var_gamma"){
+  #   simulated_summaries <- K_theo.var_gamma(r_vec = r_vec, params = params, nSims = nSims,
+  #                                           win = win, union_est = union_est, parallel = parallel)
+  # } else if(ns_kernel == "thomas"){
+  #   simulated_summaries <- K_theo.var_gamma(r_vec = r_vec, params = params, nSims = nSims,
+  #                                           win = win, union_est = union_est, parallel = parallel)
+  # } else {
+  #   simulated_summaries <- K_theo.var_gamma(r_vec = r_vec, params = params, nSims = nSims,
+  #                                           win = win, union_est = union_est, parallel = parallel)
+  # }
+  #
+  #
+  # rho_theo <- simulated_summaries$rho_hat
+  # if(union_est){
+  #   K_theo_est <- simulated_summaries$K_hat$border
+  # } else {
+  #   K_theo_est <- simulated_summaries$K_hat$poolborder
+  # }
+  #
+  # dr <- r_vec[2] - r_vec[1]
+  # contrast_K <- sum(abs(K_hat$border[which(!is.na(K_theo_est))]^wpq[6] - K_theo_est[which(!is.na(K_theo_est))]^wpq[6])^wpq[5])*dr
+  # contrast_rho <- abs(rho_theo^wpq[3] - rho_hat^wpq[3])^wpq[2]
+  #
+  # return(wpq[1]*contrast_rho + wpq[4]*contrast_K)
 }
 
 #' Estimate K-function for variance gamma point pattern
@@ -73,58 +74,59 @@ objective_weighted_contrast <- function(params, rho_hat, K_hat, params_fixed, fr
 #'
 #' @export
 K_theo.var_gamma <- function(r_vec, params, nSims, win, union_est = FALSE, parallel = TRUE, nCores = 4){
-  varphi <- exp(params[1])
-  rho <- exp(params[2])
-  sigmasq <- exp(params[3])
-  kappa <- rho^2/(2*pi*varphi*sigmasq)
-  mu <- 2*pi*varphi*sigmasq/rho
-  rRange <- exp(params[4])
-  if(parallel){
-    sims <- parallel::mclapply(X = rep(kappa, nSims),
-                               FUN = function(kappa, scale, mu, nu, rRange, win){
-                                 a <-rVarGamma_matern_thinned(kappa = kappa, scale = varphi, mu = mu, nu = -1/4,
-                                                              repulsionRange = rRange, win = win)
-                                 if(a$n > 0){
-                                   return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
-                                 } else {
-                                   return(0)
-                                 }
-                                 },
-                               scale = varphi,
-                               mu = mu,
-                               nu = -1/4,
-                               rRange = rRange,
-                               win = win,
-                               mc.cores = nCores)
-  } else {
-    my_expr <- function(){
-        a <-rVarGamma_matern_thinned(kappa = kappa, scale = varphi, mu = mu, nu = -1/4,
-                                     repulsionRange = rRange, win = win)
-        if(a$n > 0){
-            return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
-        } else {
-          return(0)
-        }
-      }
-    sims <- replicate(n = nSims,
-                      expr = my_expr(),
-                      simplify = FALSE)
-  }
-  nTot <- sum(sapply(sims, FUN = function(x){
-    if(is.numeric(x)){return(0)}
-    else{return(nrow(x))}}))
-  if(union_est){
-    return(list(K_hat = K_est.unions(points_input = sims,
-                                     l = win$xrange[2],
-                                     spacing = 5,
-                                     r_vec = r_vec,
-                                     timescale = 1),
-                rho_hat = nTot/(spatstat.geom::area(win)*nSims)))
-  } else {
-    Keach <- lapply(sims, spatstat.explore::Kest, r = r_vec)
-    return(list(K_hat = spatstat.explore::pool(spatstat.geom::as.anylist(Keach)),
-                rho_hat = nTot/(spatstat.geom::area(win)*nSims)))
-  }
+  return(0)
+  # varphi <- exp(params[1])
+  # rho <- exp(params[2])
+  # sigmasq <- exp(params[3])
+  # kappa <- rho^2/(2*pi*varphi*sigmasq)
+  # mu <- 2*pi*varphi*sigmasq/rho
+  # rRange <- exp(params[4])
+  # if(parallel){
+  #   sims <- parallel::mclapply(X = rep(kappa, nSims),
+  #                              FUN = function(kappa, scale, mu, nu, rRange, win){
+  #                                a <-rVarGamma_matern_thinned(kappa = kappa, scale = varphi, mu = mu, nu = -1/4,
+  #                                                             repulsionRange = rRange, win = win)
+  #                                if(a$n > 0){
+  #                                  return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
+  #                                } else {
+  #                                  return(0)
+  #                                }
+  #                                },
+  #                              scale = varphi,
+  #                              mu = mu,
+  #                              nu = -1/4,
+  #                              rRange = rRange,
+  #                              win = win,
+  #                              mc.cores = nCores)
+  # } else {
+  #   my_expr <- function(){
+  #       a <-rVarGamma_matern_thinned(kappa = kappa, scale = varphi, mu = mu, nu = -1/4,
+  #                                    repulsionRange = rRange, win = win)
+  #       if(a$n > 0){
+  #           return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
+  #       } else {
+  #         return(0)
+  #       }
+  #     }
+  #   sims <- replicate(n = nSims,
+  #                     expr = my_expr(),
+  #                     simplify = FALSE)
+  # }
+  # nTot <- sum(sapply(sims, FUN = function(x){
+  #   if(is.numeric(x)){return(0)}
+  #   else{return(nrow(x))}}))
+  # if(union_est){
+  #   return(list(K_hat = K_est.unions(points_input = sims,
+  #                                    l = win$xrange[2],
+  #                                    spacing = 5,
+  #                                    r_vec = r_vec,
+  #                                    timescale = 1),
+  #               rho_hat = nTot/(spatstat.geom::area(win)*nSims)))
+  # } else {
+  #   Keach <- lapply(sims, spatstat.explore::Kest, r = r_vec)
+  #   return(list(K_hat = spatstat.explore::pool(spatstat.geom::as.anylist(Keach)),
+  #               rho_hat = nTot/(spatstat.geom::area(win)*nSims)))
+  # }
 }
 
 #' Estimate K-function for thinned Thomas process
@@ -142,55 +144,56 @@ K_theo.var_gamma <- function(r_vec, params, nSims, win, union_est = FALSE, paral
 #'
 #' @export
 K_theo.thomas <- function(r_vec, params, nSims, win, union_est = FALSE, parallel = TRUE, nCores = 4){
-  mom_rho <- exp(params[1])
-  omega <- exp(params[2])
-  mu <- exp(params[3])
-  rRange <- exp(params[4])
-  if(parallel){
-    sims <- parallel::mclapply(X = rep(kappa, nSims),
-                               FUN = function(mom_rho, omega, mu, rRange, win){
-                                 a <-rThomas_matern_thinned(kappa = mom_rho, scale = omega,
-                                                            mu = mu, repulsionRange = rRange, win = win)
-                                 if(a$n > 0){
-                                   return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
-                                 } else {
-                                   return(0)
-                                 }
-                               },
-                               scale = omega,
-                               mu = mu,
-                               repulsionRange = rRange,
-                               win = win,
-                               mc.cores = nCores)
-  } else {
-    my_expr <- function(){
-      a <-rThomas_matern_thinned(kappa = mom_rho, scale = omega, mu = mu,
-                                 repulsionRange = rRange, win = win)
-      if(a$n > 0){
-        return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
-      } else {
-        return(0)
-      }
-    }
-    sims <- replicate(n = nSims,
-                      expr = my_expr(),
-                      simplify = FALSE)
-  }
-  nTot <- sum(sapply(sims, FUN = function(x){
-    if(is.numeric(x)){return(0)}
-    else{return(nrow(x))}}))
-  if(union_est){
-    return(list(K_hat = K_est.unions(points_input = sims,
-                                     l = win$xrange[2],
-                                     spacing = 5,
-                                     r_vec = r_vec,
-                                     timescale = 1),
-                rho_hat = nTot/(spatstat.geom::area(win)*nSims)))
-  } else {
-    Keach <- lapply(sims, spatstat.explore::Kest, r = r_vec)
-    return(list(K_hat = spatstat.explore::pool(spatstat.geom::as.anylist(Keach)),
-                rho_hat = nTot/(spatstat.geom::area(win)*nSims)))
-  }
+  return(0)
+  # mom_rho <- exp(params[1])
+  # omega <- exp(params[2])
+  # mu <- exp(params[3])
+  # rRange <- exp(params[4])
+  # if(parallel){
+  #   sims <- parallel::mclapply(X = rep(kappa, nSims),
+  #                              FUN = function(mom_rho, omega, mu, rRange, win){
+  #                                a <-rThomas_matern_thinned(kappa = mom_rho, scale = omega,
+  #                                                           mu = mu, repulsionRange = rRange, win = win)
+  #                                if(a$n > 0){
+  #                                  return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
+  #                                } else {
+  #                                  return(0)
+  #                                }
+  #                              },
+  #                              scale = omega,
+  #                              mu = mu,
+  #                              repulsionRange = rRange,
+  #                              win = win,
+  #                              mc.cores = nCores)
+  # } else {
+  #   my_expr <- function(){
+  #     a <-rThomas_matern_thinned(kappa = mom_rho, scale = omega, mu = mu,
+  #                                repulsionRange = rRange, win = win)
+  #     if(a$n > 0){
+  #       return(data.frame(x = a$x/win$xrange[2], y = a$y/win$yrange[2]))
+  #     } else {
+  #       return(0)
+  #     }
+  #   }
+  #   sims <- replicate(n = nSims,
+  #                     expr = my_expr(),
+  #                     simplify = FALSE)
+  # }
+  # nTot <- sum(sapply(sims, FUN = function(x){
+  #   if(is.numeric(x)){return(0)}
+  #   else{return(nrow(x))}}))
+  # if(union_est){
+  #   return(list(K_hat = K_est.unions(points_input = sims,
+  #                                    l = win$xrange[2],
+  #                                    spacing = 5,
+  #                                    r_vec = r_vec,
+  #                                    timescale = 1),
+  #               rho_hat = nTot/(spatstat.geom::area(win)*nSims)))
+  # } else {
+  #   Keach <- lapply(sims, spatstat.explore::Kest, r = r_vec)
+  #   return(list(K_hat = spatstat.explore::pool(spatstat.geom::as.anylist(Keach)),
+  #               rho_hat = nTot/(spatstat.geom::area(win)*nSims)))
+  # }
 }
 
 

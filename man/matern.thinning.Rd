@@ -4,7 +4,13 @@
 \alias{matern.thinning}
 \title{Matern type II thinning}
 \usage{
-matern.thinning(initialPattern, repulsionRange, xrange, yrange)
+matern.thinning(
+  initialPattern,
+  repulsionRange,
+  xrange,
+  yrange,
+  gridSize = NULL
+)
 }
 \arguments{
 \item{initialPattern}{DataFrame with the unthinned point pattern}
@@ -14,6 +20,8 @@ matern.thinning(initialPattern, repulsionRange, xrange, yrange)
 \item{xrange}{vector with max and min of x-axis in observation window}
 
 \item{yrange}{vector with max and min of y-axis in observation window}
+
+\item{gridSize}{Size of grid to make thinning more efficient}
 }
 \description{
 Perform a Matern type II thinning on a point pattern
