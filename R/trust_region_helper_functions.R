@@ -28,7 +28,7 @@
 #'
 #' @return Numeric vector p of length n, the proposed step, with ||p|| <=
 #'         trust_radius.
-trust_region_update <- function(gn, H, trust_radius,
+quadratic_trust_region_update <- function(gn, H, trust_radius,
                                 tol = NULL, max_iter = NULL) {
   n      <- length(gn)
   g_norm <- sqrt(sum(gn^2))

@@ -6,49 +6,31 @@
 \usage{
 evaluate_improvement(
   f_old,
+  f_new,
   params_new,
   params_old,
-  params_sim,
-  predicted_reduction,
-  patternSim,
-  K_hat,
-  rho_hat,
-  wqp,
-  rho_baseline,
-  K_lambda_baseline,
-  normalized,
   delta_hat,
-  eta
+  delta_max,
+  eta,
+  predicted_reduction
 )
 }
 \arguments{
 \item{f_old}{Value of function at evaluation location}
 
-\item{params_new}{Parameter values at which to approximate the partial derivative}
+\item{f_new}{Value of function at evaluation location}
 
-\item{params_old}{Parameter values of the previous iteration}
+\item{params_new}{New parameter values}
 
-\item{params_sim}{Parameter values used to simulate  patternSim}
-
-\item{predicted_reduction}{Step for derivative calculation}
-
-\item{patternSim}{simulated point pattern to use}
-
-\item{K_hat}{Estimated K-function for data}
-
-\item{rho_hat}{Estimated intensity for data}
-
-\item{wqp}{Weights for contrast function}
-
-\item{rho_baseline}{rho_baseline}
-
-\item{K_lambda_baseline}{K_lambda_baseline}
-
-\item{normalized}{Normalize IS weights?}
+\item{params_old}{Old parameter values}
 
 \item{delta_hat}{Old trust region radius}
 
+\item{delta_max}{Maximal trust region radius}
+
 \item{eta}{Trust region parameter}
+
+\item{predicted_reduction}{Reduction in objective with the model function}
 }
 \description{
 evaluate improvement
