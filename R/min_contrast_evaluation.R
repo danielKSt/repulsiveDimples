@@ -15,18 +15,26 @@
 #' @param rho_baseline rho_baseline
 #' @param K_lambda_baseline K_lambda_baseline
 #' @param normalized Normalize IS weights?
+#' @param log_f_kappa_0 Pre-computed density for parent process
+#' @param log_fCond_theta_0 Pre-computed density for daughter process
+#' @param parallel_IS_weights Set to TRUE to use parallel computing for the importance weights
 #'
 #' @export
 contrast_is <- function(patternSim, params_0, params_new, rho_hat, K_hat,
                         rho_baseline, K_lambda_baseline,
-                        normalized = FALSE, wq = c(1000, 1/4)){
+                        log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL,
+                        normalized = FALSE, wq = c(1000, 1/4),
+                        parallel_IS_weights = TRUE){
   w_is <- importance_sampling_weigths(kappa_0 = exp(params_0[1]),
-                                      mu_0 = exp(params_0[2]),
-                                      omega_0 = exp(params_0[3]),
+                                      omega_0 = exp(params_0[2]),
+                                      mu_0 = exp(params_0[3]),
                                       kappa = exp(params_new[1]),
-                                      mu = exp(params_new[2]),
-                                      omega = exp(params_new[3]),
-                                      patternSim = patternSim)
+                                      omega = exp(params_new[2]),
+                                      mu = exp(params_new[3]),
+                                      patternSim = patternSim,
+                                      log_f_kappa_0 = log_f_kappa_0,
+                                      log_fCond_theta_0 = log_fCond_theta_0,
+                                      parallel = parallel_IS_weights)
   rho_est <- rho_importance_sampling(w_is = w_is, rho_baseline = rho_baseline, normalized = normalized, patternSim = patternSim)
   K_est <- K_importance_sampling(w_is = w_is, K_lambda_baseline = K_lambda_baseline,
                                  rho_baseline = rho_baseline, normalized = normalized, patternSim = patternSim)

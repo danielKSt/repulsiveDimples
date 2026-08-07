@@ -7,8 +7,8 @@
 evaluate_improvement(
   f_old,
   f_new,
-  params_new,
-  params_old,
+  x_new,
+  x_old,
   delta_hat,
   delta_max,
   eta,
@@ -20,9 +20,9 @@ evaluate_improvement(
 
 \item{f_new}{Value of function at evaluation location}
 
-\item{params_new}{New parameter values}
+\item{x_new}{New parameter values}
 
-\item{params_old}{Old parameter values}
+\item{x_old}{Old parameter values}
 
 \item{delta_hat}{Old trust region radius}
 

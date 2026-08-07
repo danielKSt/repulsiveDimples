@@ -4,15 +4,17 @@
 \alias{trust_step}
 \title{Do one iteration within trust region}
 \usage{
-trust_step(
-  f_old,
-  patternSim,
-  K_lambda_baseline,
-  rho_baseline,
-  params_sim,
-  delta_hat
-)
+trust_step(x_0, delta_hat, trust_function)
+}
+\arguments{
+\item{x_0}{Parameter values used to simulate patternSim}
+
+\item{delta_hat}{Trust region radius}
+
+\item{trust_function}{Trust function}
 }
 \description{
-Do one
+Iterate from params_sim using importance sampling on the realizations patternSim, simulated from params_sim.
+The iteration is restricted to the ball centered on the parameters used for simulation,
+with radius equal to the trust region radius.
 }

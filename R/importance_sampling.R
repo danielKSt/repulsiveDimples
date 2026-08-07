@@ -20,18 +20,29 @@ importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 =
                                         parallel = FALSE){
   if(is.null(log_f_kappa_0)){
     if(parallel){
-      log_f_kappa_0 <- parallel::mclapply(X = patternSim, FUN = parent_log_density, kappa = kappa_0)
+      log_f_kappa_0 <- unlist(parallel::mclapply(X = patternSim, FUN = parent_log_density, kappa = kappa_0))
     } else {
       log_f_kappa_0 <- sapply(X = patternSim, FUN = parent_log_density, kappa = kappa_0)
     }
   }
   if(is.null(log_fCond_theta_0)){
-    log_fCond_theta_0 <- sapply(X = patternSim, FUN = thomas_daughter_log_density,
-                                mu = mu_0, omega = omega_0)
+    if(parallel){
+      log_fCond_theta_0 <- unlist(parallel::mclapply(X = patternSim, FUN = thomas_daughter_log_density,
+                                              mu = mu_0, omega = omega_0))
+    } else{
+      log_fCond_theta_0 <- sapply(X = patternSim, FUN = thomas_daughter_log_density,
+                                  mu = mu_0, omega = omega_0)
+    }
   }
-  log_f_kappa <- sapply(X = patternSim, FUN = parent_log_density, kappa = kappa)
-  log_fCond_theta <- sapply(X = patternSim, FUN = thomas_daughter_log_density,
-                            mu = mu, omega = omega)
+  if(parallel){
+    log_f_kappa <- unlist(parallel::mclapply(X = patternSim, FUN = parent_log_density, kappa = kappa))
+    log_fCond_theta <- unlist(parallel::mclapply(X = patternSim, FUN = thomas_daughter_log_density,
+                                          mu = mu, omega = omega))
+  } else {
+    log_f_kappa <- sapply(X = patternSim, FUN = parent_log_density, kappa = kappa)
+    log_fCond_theta <- sapply(X = patternSim, FUN = thomas_daughter_log_density,
+                              mu = mu, omega = omega)
+  }
 
   w_is <- exp(log_f_kappa + log_fCond_theta - log_f_kappa_0 - log_fCond_theta_0)
   return(w_is)
@@ -85,7 +96,7 @@ K_lambda_importance_sampling <- function(w_is, K_lambda_baseline, r_vec = NULL,
   }
 
   K_res$border <- K_lambda_baseline[[1]]$border*w_is[1]
-  for (i in 1:length(K_lambda_baseline)) {
+  for (i in 2:length(K_lambda_baseline)) {
     K_res$border <- K_res$border + K_lambda_baseline[[i]]$border*w_is[i]
   }
   if(!normalized){

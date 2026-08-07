@@ -12,8 +12,11 @@ contrast_is(
   K_hat,
   rho_baseline,
   K_lambda_baseline,
+  log_f_kappa_0 = NULL,
+  log_fCond_theta_0 = NULL,
   normalized = FALSE,
-  wq = c(1000, 1/4)
+  wq = c(1000, 1/4),
+  parallel_IS_weights = TRUE
 )
 }
 \arguments{
@@ -31,9 +34,15 @@ contrast_is(
 
 \item{K_lambda_baseline}{K_lambda_baseline}
 
+\item{log_f_kappa_0}{Pre-computed density for parent process}
+
+\item{log_fCond_theta_0}{Pre-computed density for daughter process}
+
 \item{normalized}{Normalize IS weights?}
 
 \item{wq}{Weights for contrast function}
+
+\item{parallel_IS_weights}{Set to TRUE to use parallel computing for the importance weights}
 }
 \description{
 Take the estimated K-function and intensity,

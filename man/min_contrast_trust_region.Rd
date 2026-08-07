@@ -10,14 +10,14 @@ min_contrast_trust_region(
   repRange,
   rho_hat,
   K_hat,
-  wq,
-  normalized,
   xlims,
   ylims,
   nSims,
   delta_hat,
   eta,
   delta_max,
+  wq = c(1000, 1/4),
+  normalized = FALSE,
   tol = 10^-8,
   max.iter = 10000,
   printProgress = FALSE
@@ -34,10 +34,6 @@ min_contrast_trust_region(
 
 \item{K_hat}{Estimated K-function for data}
 
-\item{wq}{Weights for contrast function}
-
-\item{normalized}{Normalize IS weights?}
-
 \item{xlims}{Simulation window x limits}
 
 \item{ylims}{Simulation window y limits}
@@ -49,6 +45,10 @@ min_contrast_trust_region(
 \item{eta}{Trust region parameter}
 
 \item{delta_max}{Greatest trust region radius allowed}
+
+\item{wq}{Weights for contrast function}
+
+\item{normalized}{Normalize IS weights?}
 
 \item{tol}{Convergence tolerance}
 
