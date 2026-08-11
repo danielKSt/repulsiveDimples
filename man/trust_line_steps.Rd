@@ -4,7 +4,14 @@
 \alias{trust_line_steps}
 \title{Line minimization using interpolation with maximum reach}
 \usage{
-trust_line_steps(p_k, x_k, x_0, delta_hat, trust_function, bisection_count = 7)
+trust_line_steps(
+  p_k,
+  x_k,
+  x_0,
+  delta_hat,
+  trust_function,
+  bisection_count = 11
+)
 }
 \arguments{
 \item{p_k}{Search direction}

@@ -96,11 +96,18 @@ pcf_est.unions <- function(points_input, bw = NULL, l, spacing, rMax, dr, timesc
                                                spatstat.geom::owin(xrange = c(spacing*t_ind*l,(spacing*t_ind+1)*l), yrange = c(spacing*t_ind*l,(spacing*t_ind+1)*l)))
   }
 
-  combined.points <- points_input[[1]][, 1:2]*l
-  for (t_ind in 1:(length(snapshots)-1)) {
+  first_found <- FALSE
+  t_first <- 0
+  while((!first_found) && (t_first < length(snapshots))){
+    t_first <- t_first + 1
+    first_found <- !is.numeric(points_input[[snapshots[t_first]]])
+  }
+
+  combined.points <- points_input[[snapshots[t_first]]][, 1:2]*l
+  for (t_ind in (t_first+1):length(snapshots)) {
     t <- snapshots[t_ind]
     if(!is.numeric(points_input[[t]])){
-      combined.points <- rbind(combined.points, points_input[[t]][, 1:2]*l + spacing*t_ind*l)
+      combined.points <- rbind(combined.points, points_input[[t]][, 1:2]*l + spacing*(t_ind-1)*l)
       nPoints <- nPoints + length(points_input[[t]]$x)
     }
   }

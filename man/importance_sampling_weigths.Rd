@@ -14,7 +14,8 @@ importance_sampling_weigths(
   patternSim,
   log_f_kappa_0 = NULL,
   log_fCond_theta_0 = NULL,
-  parallel = FALSE
+  parallel = FALSE,
+  daughter_kernel_cache = NULL
 )
 }
 \arguments{
@@ -37,6 +38,16 @@ importance_sampling_weigths(
 \item{log_fCond_theta_0}{Daughter null density}
 
 \item{parallel}{Set to TRUE to use parallel computing}
+
+\item{daughter_kernel_cache}{Optional cache from a previous call, as returned in this
+call's output (a list with \code{omega} and per-pattern \code{kernel_sums}). The expensive,
+omega-only part of the daughter log-density is only recomputed when \code{omega} differs
+from the cached value; otherwise the cached kernel sums are reused. Pass \code{NULL}
+(the default) to always recompute.}
+}
+\value{
+A list with \code{w_is} (the importance sampling weights) and \code{daughter_kernel_cache}
+(to be passed back into the next call for reuse when \code{omega} is unchanged).
 }
 \description{
 Use importance sampling to estimate the Ripleys' K-function for parameter values

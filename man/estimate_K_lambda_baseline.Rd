@@ -13,4 +13,6 @@ estimate_K_lambda_baseline(pattern, r_vec)
 }
 \description{
 Estimate the "unnormalized" K-function directly for a given point pattern, this function does only the "border" correction.
+Pairwise distances and border-correction weights are computed once and reused for every radius in \code{r_vec},
+via a sorted cumulative sum, rather than recomputing the full pairwise arrays per radius.
 }

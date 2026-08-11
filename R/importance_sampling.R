@@ -13,11 +13,19 @@
 #' @param log_fCond_theta_0 Daughter null density
 #' @param patternSim List of point patterns to use for estimation
 #' @param parallel Set to TRUE to use parallel computing
+#' @param daughter_kernel_cache Optional cache from a previous call, as returned in this
+#' call's output (a list with `omega` and per-pattern `kernel_sums`). The expensive,
+#' omega-only part of the daughter log-density is only recomputed when `omega` differs
+#' from the cached value; otherwise the cached kernel sums are reused. Pass `NULL`
+#' (the default) to always recompute.
+#'
+#' @return A list with `w_is` (the importance sampling weights) and `daughter_kernel_cache`
+#' (to be passed back into the next call for reuse when `omega` is unchanged).
 #'
 #' @export
 importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 = NULL, omega_0 = NULL,
                                         patternSim, log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL,
-                                        parallel = FALSE){
+                                        parallel = FALSE, daughter_kernel_cache = NULL){
   if(is.null(log_f_kappa_0)){
     if(parallel){
       log_f_kappa_0 <- unlist(parallel::mclapply(X = patternSim, FUN = parent_log_density, kappa = kappa_0))
@@ -34,18 +42,26 @@ importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 =
                                   mu = mu_0, omega = omega_0)
     }
   }
-  if(parallel){
-    log_f_kappa <- unlist(parallel::mclapply(X = patternSim, FUN = parent_log_density, kappa = kappa))
-    log_fCond_theta <- unlist(parallel::mclapply(X = patternSim, FUN = thomas_daughter_log_density,
-                                          mu = mu, omega = omega))
-  } else {
-    log_f_kappa <- sapply(X = patternSim, FUN = parent_log_density, kappa = kappa)
-    log_fCond_theta <- sapply(X = patternSim, FUN = thomas_daughter_log_density,
-                              mu = mu, omega = omega)
+
+  if(is.null(daughter_kernel_cache) || !isTRUE(all.equal(daughter_kernel_cache$omega, omega))){
+    if(parallel){
+      kernel_sums <- parallel::mclapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega)
+    } else {
+      kernel_sums <- lapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega)
+    }
+    daughter_kernel_cache <- list(omega = omega, kernel_sums = kernel_sums)
   }
 
+  if(parallel){
+    log_f_kappa <- unlist(parallel::mclapply(X = patternSim, FUN = parent_log_density, kappa = kappa))
+  } else {
+    log_f_kappa <- sapply(X = patternSim, FUN = parent_log_density, kappa = kappa)
+  }
+  log_fCond_theta <- sapply(X = daughter_kernel_cache$kernel_sums,
+                            FUN = thomas_daughter_log_density_from_sums, mu = mu)
+
   w_is <- exp(log_f_kappa + log_fCond_theta - log_f_kappa_0 - log_fCond_theta_0)
-  return(w_is)
+  return(list(w_is = w_is, daughter_kernel_cache = daughter_kernel_cache))
 }
 
 
@@ -108,25 +124,14 @@ K_lambda_importance_sampling <- function(w_is, K_lambda_baseline, r_vec = NULL,
 #' Estimate the "unnormalized" K-function directly for a given point pattern
 #' @description
 #' Estimate the "unnormalized" K-function directly for a given point pattern, this function does only the "border" correction.
+#' Pairwise distances and border-correction weights are computed once and reused for every radius in `r_vec`,
+#' via a sorted cumulative sum, rather than recomputing the full pairwise arrays per radius.
 #'
 #' @param pattern The point pattern to estimate for
 #' @param r_vec Vector of radii to use
 #'
 #' @export
 estimate_K_lambda_baseline <- function(pattern, r_vec){
-  #border <- sapply(r_vec, K_lambda_specific_r, pattern)
-  border <- simplify2array(parallel::mclapply(r_vec, K_lambda_specific_r, pattern))
-  return(data.frame(r = r_vec, border = border))
-}
-
-#' Estimate K_lambda for a specific radius
-#' @description
-#' Description
-#'
-#' @param r radius
-#' @param pattern Pattern to estimate for
-#'
-K_lambda_specific_r <- function(r, pattern){
   x     <- pattern$thinned$x
   y     <- pattern$thinned$y
   n     <- nrow(pattern$thinned)
@@ -135,20 +140,27 @@ K_lambda_specific_r <- function(r, pattern){
   ylim1 <- pattern$ylim_thinned[1]
   ylim2 <- pattern$ylim_thinned[2]
 
-  # Compute all n×n pairwise difference matrices at once
+  if(n < 2){
+    return(data.frame(r = r_vec, border = 0))
+  }
+
   dx <- outer(x, x, "-")
   dy <- outer(y, y, "-")
+  ut <- upper.tri(dx)
+  dx <- dx[ut]
+  dy <- dy[ut]
 
-  # Single logical mask: upper triangle (i < j) AND within distance r
-  mask <- upper.tri(dx) & (dx^2 + dy^2) < r^2
+  d <- sqrt(dx^2 + dy^2)
+  w <- 1 / ((xlim2 - xlim1 - abs(dx)) * (ylim2 - ylim1 - abs(dy)))
 
-  # Extract only the qualifying pairs and sum their weights
-  dx_sel <- dx[mask]
-  dy_sel <- dy[mask]
+  ord <- order(d)
+  d <- d[ord]
+  cw <- cumsum(w[ord])
 
-  res <- sum(1 / ((xlim2 - xlim1 - abs(dx_sel)) * (ylim2 - ylim1 - abs(dy_sel))))
+  idx <- findInterval(r_vec, d)
+  border <- ifelse(idx == 0, 0, cw[pmax(idx, 1)])
 
-  return(2 * res)
+  return(data.frame(r = r_vec, border = 2 * border))
 }
 
 
@@ -250,6 +262,37 @@ parent_log_density <- function(pattern = NULL, kappa, parent = NULL, B_area = NU
 thomas_daughter_log_density <- function(pattern = NULL, mu, omega,
                                         parent = NULL, daughter = NULL,
                                         xlim = NULL, ylim = NULL) {
+  kernel_sums <- thomas_daughter_kernel_sums(pattern = pattern, omega = omega,
+                                             parent = parent, daughter = daughter,
+                                             xlim = xlim, ylim = ylim)
+  return(thomas_daughter_log_density_from_sums(mu = mu, kernel_sums = kernel_sums))
+}
+
+#' Kernel sums for the Thomas daughter log-density (the omega-dependent part)
+#'
+#' @description
+#' Computes the parts of \code{\link{thomas_daughter_log_density}} that depend on
+#' \eqn{\omega} (and the fixed parent/daughter positions) but not on \eqn{\mu}:
+#' \eqn{\sum_j p_W(c_j)} and \eqn{\sum_i \log\left(\sum_j k(x_i-c_j)\right)}. These are
+#' the expensive, \eqn{O(n_{daughter} \times n_{parent})} parts of the log-density. Split
+#' out so they can be computed once and reused across evaluations that only change
+#' \eqn{\mu}, via \code{\link{thomas_daughter_log_density_from_sums}}.
+#'
+#' @param omega    Positive scalar. Standard deviation of the Gaussian dispersal kernel.
+#' @param parent   A \code{data.frame} with columns \code{x} and \code{y} giving parent locations.
+#' @param daughter A \code{data.frame} with columns \code{x} and \code{y} giving daughter locations.
+#' @param xlim     Numeric vector of length 2. The x-range of the observation window \eqn{W}.
+#' @param ylim     Numeric vector of length 2. The y-range of the observation window \eqn{W}.
+#' @param pattern  A list containing elements "parent", "daughter", "xlim_unthinned", and "ylim_unthinned".
+#'
+#' @return A list with \code{area_W}, \code{S_pW} (\eqn{\sum_j p_W(c_j)}),
+#' \code{sumLogK} (\eqn{\sum_i \log\sum_j k(x_i-c_j)}), and \code{nDaughter}.
+#'
+#' @importFrom stats pnorm dnorm
+#' @export
+thomas_daughter_kernel_sums <- function(pattern = NULL, omega,
+                                        parent = NULL, daughter = NULL,
+                                        xlim = NULL, ylim = NULL){
   if(!is.null(pattern)){
     parent <- pattern$parent
     daughter <- pattern$daughter
@@ -258,22 +301,36 @@ thomas_daughter_log_density <- function(pattern = NULL, mu, omega,
   }
   area_W <- (xlim[2] - xlim[1]) * (ylim[2]-ylim[1])
 
-  norm_term <- 0
+  S_pW <- 0
   if(nrow(parent) > 0){
     p_W <- (stats::pnorm(xlim[2], mean = parent$x, sd = omega) - stats::pnorm(xlim[1], mean = parent$x, sd = omega)) *
       (stats::pnorm(ylim[2], mean = parent$y, sd = omega) - stats::pnorm(ylim[1], mean = parent$y, sd = omega))
-
-    norm_term <- mu * sum(p_W)
+    S_pW <- sum(p_W)
   }
 
-  log_prod_term <- 0
+  sumLogK <- 0
   if (nrow(daughter) > 0) {
     dx <- outer(daughter$x, parent$x, "-")
     dy <- outer(daughter$y, parent$y, "-")
     K <- stats::dnorm(dx, mean = 0, sd = omega) * stats::dnorm(dy, mean = 0, sd = omega)
-    log_prod_term <- sum(log(rowSums(K)))  + log(mu)*nrow(daughter)
+    sumLogK <- sum(log(rowSums(K)))
   }
-  log_dens <- area_W - norm_term + log_prod_term
 
-  return(log_dens)
+  return(list(area_W = area_W, S_pW = S_pW, sumLogK = sumLogK, nDaughter = nrow(daughter)))
+}
+
+#' Combine cached kernel sums with mu into the Thomas daughter log-density
+#'
+#' @description
+#' O(1) combine step completing \code{\link{thomas_daughter_kernel_sums}} into the
+#' full log-density from \code{\link{thomas_daughter_log_density}}.
+#'
+#' @param mu Positive scalar. Mean number of daughters per parent.
+#' @param kernel_sums Output of \code{\link{thomas_daughter_kernel_sums}}.
+#'
+#' @return A scalar giving \eqn{\log f(X \mid C)}.
+#'
+#' @export
+thomas_daughter_log_density_from_sums <- function(mu, kernel_sums){
+  kernel_sums$area_W - mu*kernel_sums$S_pW + kernel_sums$sumLogK + log(mu)*kernel_sums$nDaughter
 }

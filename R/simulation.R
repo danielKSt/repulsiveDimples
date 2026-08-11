@@ -8,34 +8,24 @@
 #' @param repulsionRange Range of hard-core repulsion
 #' @param xrange vector with max and min of x-axis in observation window
 #' @param yrange vector with max and min of y-axis in observation window
-#' @param gridSize Size of grid to make thinning more efficient
 #'
 #' @export
-matern.thinning <- function(initialPattern, repulsionRange, xrange, yrange, gridSize = NULL){
-  # Bruk closePairs for å forbetre
-
-  # initialPattern$xbox <- rep(1, nrow(initialPattern))
-  # initialPattern$ybox <- rep(1, nrow(initialPattern))
-  # for (i in 1:nrow(initialPattern)) {
-  #   initialPattern$xbox[i] <- floor(initialPattern$x[i]/repulsionRange)
-  #   initialPattern$ybox[i] <- floor(initialPattern$y[i]/repulsionRange)
-  # }
-
-  ageMark <- stats::runif(n = nrow(initialPattern))
+matern.thinning <- function(initialPattern, repulsionRange, xrange, yrange){
+  n <- nrow(initialPattern)
+  ageMark <- stats::runif(n = n)
   initialPattern$age <- ageMark
   df <- initialPattern[order(initialPattern$age), ]
-  removePoint <- rep(0, nrow(df))
-  for(i in 1:(nrow(df)-1)){
-    min_dist = sqrt(xrange[2]^2+yrange[2]^2)
-    for (j in (i+1):nrow(df)) {
-      d <- sqrt((df$x[i]-df$x[j])^2+(df$y[i]-df$y[j])^2)
-      min_dist <- min(c(d, min_dist))
-      if(min_dist <= repulsionRange){
-        removePoint[i] <- 1
-        break
-      }
-    }
+
+  removePoint <- rep(0, n)
+  if(n >= 2){
+    pad <- max(repulsionRange, 1e-6)
+    win <- spatstat.geom::owin(range(df$x) + c(-pad, pad),
+                                range(df$y) + c(-pad, pad))
+    pp <- spatstat.geom::ppp(df$x, df$y, window = win, check = FALSE)
+    pairs <- spatstat.geom::closepairs(pp, rmax = repulsionRange, twice = FALSE, what = "indices")
+    removePoint[unique(pairs$i)] <- 1
   }
+
   res <- df[which(removePoint==0), c(1,2)]
   res <- res[which(res$x > xrange[1]), ]
   res <- res[which(res$x < xrange[2]), ]

@@ -63,14 +63,18 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
   rho_baseline <- sapply(patternSim, estimate_rho_baseline)
 
   x_sim <- params[par_free_index]
+  daughter_kernel_cache <- NULL
   trust_function <- function(x_new){
     params_new <- params
     params_new[par_free_index] <- x_new
-    return(contrast_is(patternSim = patternSim, params_0 = params,
+    res <- contrast_is(patternSim = patternSim, params_0 = params,
                        params_new = params_new, rho_hat = rho_hat, K_hat = K_hat,
                        rho_baseline = rho_baseline, K_lambda_baseline = K_lambda_baseline,
                        wq = wq, normalized = normalized, log_f_kappa_0 = log_f_kappa_0,
-                       log_fCond_theta_0 = log_fCond_theta_0, parallel_IS_weights = TRUE))
+                       log_fCond_theta_0 = log_fCond_theta_0, parallel_IS_weights = TRUE,
+                       daughter_kernel_cache = daughter_kernel_cache)
+    daughter_kernel_cache <<- res$daughter_kernel_cache
+    return(res$f_est)
   }
 
   f_vals[1] <- trust_function(x_sim)
@@ -109,7 +113,7 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
                           params_new = params_star, rho_hat = rho_hat, K_hat = K_hat,
                           rho_baseline = rho_baseline_star, K_lambda_baseline = K_lambda_baseline_star,
                           wq = wq, normalized = normalized, log_f_kappa_0 = log_f_kappa_0_star,
-                          log_fCond_theta_0 = log_fCond_theta_0_star, parallel_IS_weights = TRUE)
+                          log_fCond_theta_0 = log_fCond_theta_0_star, parallel_IS_weights = TRUE)$f_est
 
     update_eval <- evaluate_improvement(f_old = f_vals[nSteps], f_new = f_star,
                                         x_new = res$x_star, x_old = x_sequence[nSteps, ],
@@ -127,15 +131,19 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
       log_fCond_theta_0 <- log_fCond_theta_0_star
       K_lambda_baseline <- K_lambda_baseline_star
       rho_baseline <- rho_baseline_star
+      daughter_kernel_cache <- NULL
 
       trust_function <- function(x_new){
         params_new <- params
         params_new[par_free_index] <- x_new
-        return(contrast_is(patternSim = patternSim, params_0 = params,
+        res <- contrast_is(patternSim = patternSim, params_0 = params,
                            params_new = params_new, rho_hat = rho_hat, K_hat = K_hat,
                            rho_baseline = rho_baseline, K_lambda_baseline = K_lambda_baseline,
                            wq = wq, normalized = normalized, log_f_kappa_0 = log_f_kappa_0,
-                           log_fCond_theta_0 = log_fCond_theta_0, parallel_IS_weights = TRUE))
+                           log_fCond_theta_0 = log_fCond_theta_0, parallel_IS_weights = TRUE,
+                           daughter_kernel_cache = daughter_kernel_cache)
+        daughter_kernel_cache <<- res$daughter_kernel_cache
+        return(res$f_est)
       }
     }
     change_after_step <- sum((x_sequence[nSteps + 1, ] - x_sequence[nSteps, ])^2)

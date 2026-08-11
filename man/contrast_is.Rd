@@ -16,7 +16,8 @@ contrast_is(
   log_fCond_theta_0 = NULL,
   normalized = FALSE,
   wq = c(1000, 1/4),
-  parallel_IS_weights = TRUE
+  parallel_IS_weights = TRUE,
+  daughter_kernel_cache = NULL
 )
 }
 \arguments{
@@ -43,6 +44,14 @@ contrast_is(
 \item{wq}{Weights for contrast function}
 
 \item{parallel_IS_weights}{Set to TRUE to use parallel computing for the importance weights}
+
+\item{daughter_kernel_cache}{Optional cache passed through to \code{\link{importance_sampling_weigths}};
+see that function for details. Pass the \code{daughter_kernel_cache} from this call's return value into
+the next call to reuse cached work when \code{params_new}'s omega is unchanged.}
+}
+\value{
+A list with \code{f_est} (the contrast value) and \code{daughter_kernel_cache} (to be passed back
+into the next call for reuse).
 }
 \description{
 Take the estimated K-function and intensity,
