@@ -26,23 +26,20 @@
 importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 = NULL, omega_0 = NULL,
                                         patternSim, log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL,
                                         parallel = FALSE, daughter_kernel_cache = NULL){
-  if(is.null(log_f_kappa_0)){
-    if(parallel){
-      log_f_kappa_0 <- unlist(parallel::mclapply(X = patternSim, FUN = parent_log_density, kappa = kappa_0))
-    } else {
-      log_f_kappa_0 <- sapply(X = patternSim, FUN = parent_log_density, kappa = kappa_0)
-    }
-  }
-  if(is.null(log_fCond_theta_0)){
-    if(parallel){
-      log_fCond_theta_0 <- unlist(parallel::mclapply(X = patternSim, FUN = thomas_daughter_log_density,
-                                              mu = mu_0, omega = omega_0))
-    } else{
-      log_fCond_theta_0 <- sapply(X = patternSim, FUN = thomas_daughter_log_density,
-                                  mu = mu_0, omega = omega_0)
-    }
-  }
+  # The parent log-density is O(1) per pattern given the enlarged-window area and
+  # the parent count, and both of those are parameter-independent, so the two
+  # vectors are extracted once and reused for kappa_0 as well as kappa. This is
+  # the same expression as parent_log_density(), evaluated for all patterns at once.
+  B_area   <- vapply(patternSim, function(p) p$B_area, numeric(1))
+  n_parent <- vapply(patternSim, function(p) nrow(p$parent), numeric(1))
 
+  if(is.null(log_f_kappa_0)){
+    log_f_kappa_0 <- B_area*(1 - kappa_0) + n_parent*log(kappa_0)
+  }
+  log_f_kappa <- B_area*(1 - kappa) + n_parent*log(kappa)
+
+  # The expensive O(n_daughter x n_parent) part of the daughter density depends
+  # on omega only, so it is computed once per omega and reused.
   if(is.null(daughter_kernel_cache) || !isTRUE(all.equal(daughter_kernel_cache$omega, omega))){
     if(parallel){
       kernel_sums <- parallel::mclapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega)
@@ -52,153 +49,30 @@ importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 =
     daughter_kernel_cache <- list(omega = omega, kernel_sums = kernel_sums)
   }
 
-  if(parallel){
-    log_f_kappa <- unlist(parallel::mclapply(X = patternSim, FUN = parent_log_density, kappa = kappa))
-  } else {
-    log_f_kappa <- sapply(X = patternSim, FUN = parent_log_density, kappa = kappa)
+  log_fCond_theta <- vapply(daughter_kernel_cache$kernel_sums,
+                            thomas_daughter_log_density_from_sums, numeric(1), mu = mu)
+
+  if(is.null(log_fCond_theta_0)){
+    if(isTRUE(all.equal(omega_0, omega))){
+      # Baseline and target share the dispersal parameter, so the kernel sums just
+      # computed are exactly the ones the baseline density needs - only the cheap
+      # mu-dependent combine differs. This is the common case when omega is not
+      # one of the parameters being perturbed.
+      log_fCond_theta_0 <- vapply(daughter_kernel_cache$kernel_sums,
+                                  thomas_daughter_log_density_from_sums, numeric(1), mu = mu_0)
+    } else {
+      if(parallel){
+        kernel_sums_0 <- parallel::mclapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega_0)
+      } else {
+        kernel_sums_0 <- lapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega_0)
+      }
+      log_fCond_theta_0 <- vapply(kernel_sums_0, thomas_daughter_log_density_from_sums,
+                                  numeric(1), mu = mu_0)
+    }
   }
-  log_fCond_theta <- sapply(X = daughter_kernel_cache$kernel_sums,
-                            FUN = thomas_daughter_log_density_from_sums, mu = mu)
 
   w_is <- exp(log_f_kappa + log_fCond_theta - log_f_kappa_0 - log_fCond_theta_0)
   return(list(w_is = w_is, daughter_kernel_cache = daughter_kernel_cache))
-}
-
-
-#' Use importance sampling to estimate the K-function
-#' @description
-#' Use importance sampling to estimate the Ripleys' K-function for parameter values
-#'
-#' @param w_is Importance sampling weights
-#' @param patternSim List of point patterns to use for estimation
-#' @param K_lambda_baseline K_lambda_baseline
-#' @param r_vec r_vec
-#' @param rho_baseline rho_baseline
-#' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
-#'
-#' @export
-K_importance_sampling <- function(w_is, K_lambda_baseline, rho_baseline,
-                                  r_vec = NULL, patternSim = NULL, normalized = FALSE){
-
-  K_lambda <- K_lambda_importance_sampling(w_is, K_lambda_baseline, r_vec, patternSim, normalized)
-  lambda_squared <- rho_importance_sampling(w_is, patternSim = patternSim,
-                                            rho_baseline = rho_baseline, normalized = normalized)^2
-
-  K_res <- K_lambda
-  K_res$border <- K_res$border/lambda_squared
-  return(K_res)
-}
-
-#' Use importance sampling to estimate the "unnormalized" K-function
-#' @description
-#' Use importance sampling to estimate the Ripleys' K-function for parameter values
-#'
-#' @param w_is Importance sampling weights
-#' @param patternSim List of point patterns to use for estimation
-#' @param K_lambda_baseline K_lambda_baseline
-#' @param r_vec r_vec
-#' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
-#'
-#' @export
-K_lambda_importance_sampling <- function(w_is, K_lambda_baseline, r_vec = NULL,
-                                         patternSim = NULL, normalized = FALSE){
-  if(is.null(K_lambda_baseline)){
-    K_lambda_baseline <- lapply(patternSim, estimate_K_lambda_baseline, r_vec = r_vec)
-  }
-
-  K_res <- K_lambda_baseline[[1]]
-  if(normalized){
-    w_is <- w_is/sum(w_is)
-  }
-
-  K_res$border <- K_lambda_baseline[[1]]$border*w_is[1]
-  for (i in 2:length(K_lambda_baseline)) {
-    K_res$border <- K_res$border + K_lambda_baseline[[i]]$border*w_is[i]
-  }
-  if(!normalized){
-    K_res$border <- K_res$border/length(K_lambda_baseline)
-  }
-  return(K_res)
-}
-
-#' Estimate the "unnormalized" K-function directly for a given point pattern
-#' @description
-#' Estimate the "unnormalized" K-function directly for a given point pattern, this function does only the "border" correction.
-#' Pairwise distances and border-correction weights are computed once and reused for every radius in `r_vec`,
-#' via a sorted cumulative sum, rather than recomputing the full pairwise arrays per radius.
-#'
-#' @param pattern The point pattern to estimate for
-#' @param r_vec Vector of radii to use
-#'
-#' @export
-estimate_K_lambda_baseline <- function(pattern, r_vec){
-  x     <- pattern$thinned$x
-  y     <- pattern$thinned$y
-  n     <- nrow(pattern$thinned)
-  xlim1 <- pattern$xlim_thinned[1]
-  xlim2 <- pattern$xlim_thinned[2]
-  ylim1 <- pattern$ylim_thinned[1]
-  ylim2 <- pattern$ylim_thinned[2]
-
-  if(n < 2){
-    return(data.frame(r = r_vec, border = 0))
-  }
-
-  dx <- outer(x, x, "-")
-  dy <- outer(y, y, "-")
-  ut <- upper.tri(dx)
-  dx <- dx[ut]
-  dy <- dy[ut]
-
-  d <- sqrt(dx^2 + dy^2)
-  w <- 1 / ((xlim2 - xlim1 - abs(dx)) * (ylim2 - ylim1 - abs(dy)))
-
-  ord <- order(d)
-  d <- d[ord]
-  cw <- cumsum(w[ord])
-
-  idx <- findInterval(r_vec, d)
-  border <- ifelse(idx == 0, 0, cw[pmax(idx, 1)])
-
-  return(data.frame(r = r_vec, border = 2 * border))
-}
-
-
-#' Use importance sampling to estimate the (stationary) intensity
-#' @description
-#' Using a thinned Thomas process simulated with parameters kappa_0, mu_0, and omega_0,
-#' we use importance sampling to estimate
-#'
-#' @param w_is Importance sampling weights
-#' @param patternSim List of point patterns to use for estimation
-#' @param rho_baseline rho_baseline
-#' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
-#'
-#' @export
-rho_importance_sampling <- function(w_is, rho_baseline, patternSim = NULL, normalized = FALSE){
-  if(is.null(rho_baseline)){
-    rho_baseline <- sapply(patternSim, estimate_rho_baseline)
-  }
-
-  if(normalized){
-    w_is <- w_is/sum(w_is)
-    return(sum(w_is*rho_baseline))
-  } else {
-    return(mean(w_is*rho_baseline))
-  }
-}
-
-#' Estimate the intensity directly for a given point pattern
-#' @description
-#' Estimate the intensity directly for a given point pattern.
-#' This estimate assumes stationarity.
-#'
-#' @param pattern The point pattern to estimate for
-#'
-#' @export
-estimate_rho_baseline <- function(pattern){
-  return(nrow(pattern$thinned)/
-           ((pattern$xlim_thinned[2] - pattern$xlim_thinned[1])*(pattern$ylim_thinned[2] - pattern$ylim_thinned[1])))
 }
 
 #' Calculate Poisson density of a parent process
@@ -219,11 +93,6 @@ estimate_rho_baseline <- function(pattern){
 #' @export
 parent_log_density <- function(pattern = NULL, kappa, parent = NULL, B_area = NULL){
   return(pattern$B_area*(1-kappa) + nrow(pattern$parent)*log(kappa))
-  # if(!is.null(pattern)){
-  #   return(pattern$B_area*(1-kappa) + nrow(pattern$parent)*log(kappa))
-  # } else {
-  #   return(B_area*(1-kappa) + nrow(parent)*log(kappa))
-  # }
 }
 
 #' Log-density of the daughter pattern given parents for a Thomas cluster process
@@ -312,8 +181,12 @@ thomas_daughter_kernel_sums <- function(pattern = NULL, omega,
   if (nrow(daughter) > 0) {
     dx <- outer(daughter$x, parent$x, "-")
     dy <- outer(daughter$y, parent$y, "-")
-    K <- stats::dnorm(dx, mean = 0, sd = omega) * stats::dnorm(dy, mean = 0, sd = omega)
-    sumLogK <- sum(log(rowSums(K)))
+    # dnorm(dx, 0, omega)*dnorm(dy, 0, omega) equals
+    # exp(-(dx^2 + dy^2)/(2*omega^2)) / (2*pi*omega^2). Evaluating it in that form
+    # needs one exp() over the pair matrix instead of two dnorm() calls, and the
+    # constant factor comes out of the row sums as a single term per daughter.
+    E <- exp(-(dx*dx + dy*dy) / (2*omega^2))
+    sumLogK <- sum(log(rowSums(E))) - nrow(daughter)*log(2*pi*omega^2)
   }
 
   return(list(area_W = area_W, S_pW = S_pW, sumLogK = sumLogK, nDaughter = nrow(daughter)))

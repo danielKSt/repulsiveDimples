@@ -45,9 +45,7 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
                             scale = exp(params[2]), mu = exp(params[3]),
                             repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
     print("Calculating densities for the simulation parameter:")
-    log_f_kappa_0 <- unlist(mcprogress::pmclapply(X = patternSim, FUN = parent_log_density, kappa = exp(params[1])))
-    log_fCond_theta_0 <- unlist(mcprogress::pmclapply(X = patternSim, FUN = thomas_daughter_log_density,
-                                               mu = exp(params[3]), omega = exp(params[2])))
+    baseline <- baseline_densities(patternSim = patternSim, params = params, printProgress = TRUE)
     print("Estimating baselines: ")
     K_lambda_baseline <- mcprogress::pmclapply(patternSim, estimate_K_lambda_baseline, r_vec = K_hat$r)
   } else {
@@ -55,15 +53,18 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
                                      scale = exp(params[2]), mu = exp(params[3]),
                                      repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
     K_lambda_baseline <- parallel::mclapply(patternSim, estimate_K_lambda_baseline, r_vec = K_hat$r)
-    log_f_kappa_0 <- unlist(parallel::mclapply(X = patternSim, FUN = parent_log_density, kappa = exp(params[1])))
-    log_fCond_theta_0 <- unlist(parallel::mclapply(X = patternSim, FUN = thomas_daughter_log_density,
-                                               mu = exp(params[3]), omega = exp(params[2])))
+    baseline <- baseline_densities(patternSim = patternSim, params = params, printProgress = FALSE)
   }
+
+  log_f_kappa_0 <- baseline$log_f_kappa_0
+  log_fCond_theta_0 <- baseline$log_fCond_theta_0
+  # Seeded rather than NULL: the kernel sums behind log_fCond_theta_0 are exactly
+  # the ones the first evaluations need, so they are handed straight to the cache.
+  daughter_kernel_cache <- baseline$daughter_kernel_cache
 
   rho_baseline <- sapply(patternSim, estimate_rho_baseline)
 
   x_sim <- params[par_free_index]
-  daughter_kernel_cache <- NULL
   trust_function <- function(x_new){
     params_new <- params
     params_new[par_free_index] <- x_new
@@ -92,9 +93,8 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
                                                repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
 
       print("Calculating densities for the simulation parameter:")
-      log_f_kappa_0_star <- unlist(mcprogress::pmclapply(X = patternSim_star, FUN = parent_log_density, kappa = exp(params_star[1])))
-      log_fCond_theta_0_star <- unlist(mcprogress::pmclapply(X = patternSim_star, FUN = thomas_daughter_log_density,
-                                                 mu = exp(params_star[3]), omega = exp(params_star[2])))
+      baseline_star <- baseline_densities(patternSim = patternSim_star, params = params_star,
+                                          printProgress = TRUE)
 
       print("Estimating baselines: ")
       K_lambda_baseline_star <- mcprogress::pmclapply(patternSim_star, estimate_K_lambda_baseline, r_vec = K_hat$r)
@@ -103,17 +103,19 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
                                        scale = exp(params_star[2]), mu = exp(params_star[3]),
                                        repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
       K_lambda_baseline_star <- parallel::mclapply(patternSim_star, estimate_K_lambda_baseline, r_vec = K_hat$r)
-      log_f_kappa_0_star <- unlist(parallel::mclapply(X = patternSim_star, FUN = parent_log_density, kappa = exp(params_star[1])))
-      log_fCond_theta_0_star <- unlist(parallel::mclapply(X = patternSim_star, FUN = thomas_daughter_log_density,
-                                              mu = exp(params_star[3]), omega = exp(params_star[2])))
+      baseline_star <- baseline_densities(patternSim = patternSim_star, params = params_star,
+                                          printProgress = FALSE)
     }
+    log_f_kappa_0_star <- baseline_star$log_f_kappa_0
+    log_fCond_theta_0_star <- baseline_star$log_fCond_theta_0
     rho_baseline_star <- sapply(patternSim_star, estimate_rho_baseline)
 
     f_star <- contrast_is(patternSim = patternSim_star, params_0 = params_star,
                           params_new = params_star, rho_hat = rho_hat, K_hat = K_hat,
                           rho_baseline = rho_baseline_star, K_lambda_baseline = K_lambda_baseline_star,
                           wq = wq, normalized = normalized, log_f_kappa_0 = log_f_kappa_0_star,
-                          log_fCond_theta_0 = log_fCond_theta_0_star, parallel_IS_weights = TRUE)$f_est
+                          log_fCond_theta_0 = log_fCond_theta_0_star, parallel_IS_weights = TRUE,
+                          daughter_kernel_cache = baseline_star$daughter_kernel_cache)$f_est
 
     update_eval <- evaluate_improvement(f_old = f_vals[nSteps], f_new = f_star,
                                         x_new = res$x_star, x_old = x_sequence[nSteps, ],
@@ -131,7 +133,7 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
       log_fCond_theta_0 <- log_fCond_theta_0_star
       K_lambda_baseline <- K_lambda_baseline_star
       rho_baseline <- rho_baseline_star
-      daughter_kernel_cache <- NULL
+      daughter_kernel_cache <- baseline_star$daughter_kernel_cache
 
       trust_function <- function(x_new){
         params_new <- params
@@ -152,6 +154,53 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
   }
   return(list(params = x_sequence[1:nSteps, ],
               f_vals = f_vals[1:nSteps]))
+}
+
+#' Baseline densities for a freshly simulated ensemble
+#' @description
+#' Computes the parent and daughter log-densities of `patternSim` under the very
+#' parameters it was simulated from, which serve as the denominator of every
+#' importance sampling weight taken against that ensemble.
+#'
+#' The daughter density needs the \eqn{O(n_{daughter} \times n_{parent})} kernel sums at
+#' `omega_0`, which are exactly the sums the subsequent trust-region evaluations
+#' need whenever they leave omega unchanged. They are therefore returned alongside
+#' the densities, ready to seed `daughter_kernel_cache`, so the ensemble is passed
+#' over once instead of once here and again on the first evaluation.
+#'
+#' The parent log-density is `O(1)` per pattern given the enlarged-window area and
+#' the parent count, so it is evaluated as a single vectorised expression rather
+#' than dispatched per pattern.
+#'
+#' @param patternSim List of simulated point patterns.
+#' @param params Log-scale parameter vector `(log kappa, log omega, log mu)` that
+#' `patternSim` was simulated from.
+#' @param printProgress Set to TRUE to report progress while computing.
+#'
+#' @return A list with `log_f_kappa_0`, `log_fCond_theta_0`, and
+#' `daughter_kernel_cache` (in the form `importance_sampling_weigths` expects).
+baseline_densities <- function(patternSim, params, printProgress = FALSE){
+  kappa_0 <- exp(params[1])
+  omega_0 <- exp(params[2])
+  mu_0    <- exp(params[3])
+
+  B_area   <- vapply(patternSim, function(p) p$B_area, numeric(1))
+  n_parent <- vapply(patternSim, function(p) nrow(p$parent), numeric(1))
+  log_f_kappa_0 <- B_area*(1 - kappa_0) + n_parent*log(kappa_0)
+
+  if(printProgress){
+    kernel_sums_0 <- mcprogress::pmclapply(X = patternSim, FUN = thomas_daughter_kernel_sums,
+                                           omega = omega_0)
+  } else {
+    kernel_sums_0 <- parallel::mclapply(X = patternSim, FUN = thomas_daughter_kernel_sums,
+                                        omega = omega_0)
+  }
+  log_fCond_theta_0 <- vapply(kernel_sums_0, thomas_daughter_log_density_from_sums,
+                              numeric(1), mu = mu_0)
+
+  return(list(log_f_kappa_0 = log_f_kappa_0,
+              log_fCond_theta_0 = log_fCond_theta_0,
+              daughter_kernel_cache = list(omega = omega_0, kernel_sums = kernel_sums_0)))
 }
 
 #' Do one iteration within trust region

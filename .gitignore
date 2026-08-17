@@ -5,3 +5,6 @@
 .DS_Store
 .quarto
 inst/doc
+
+# Rendered study reports - regenerable from the .Rmd plus the .RDa results
+simulation_studies/*.html
