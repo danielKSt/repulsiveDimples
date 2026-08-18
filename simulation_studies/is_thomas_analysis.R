@@ -1,11 +1,14 @@
 
 library(ggplot2)
+library(repulsiveDimples)
 setwd("/Users/danielks/Library/CloudStorage/OneDrive-NTNU/PhD/Aalborg/repulsiveDimples/simulation_studies/")
 
-load("study2.RDa")
+load("study3a.RDa")
 
 # Helper functions: ----
-calc_K_diff <- function(K_true, K_norm, K_unnorm, q = 1/4){
+calc_K_diff <- function(K_true, case, q = 1/4){
+  K_norm <- case$res_is$K_is_norm
+  K_unnorm <- case$res_is$K_is
   dr <- K_true$r[2] - K_true$r[1]
   diff_norm <- c(1:length(K_norm))
   diff_unnorm <- c(1:length(K_unnorm))
@@ -13,82 +16,88 @@ calc_K_diff <- function(K_true, K_norm, K_unnorm, q = 1/4){
     diff_norm[i] <- sum((K_true$border^q - K_norm[[i]]$border^q)^2)*dr
     diff_unnorm[i] <- sum((K_true$border^q - K_unnorm[[i]]$border^q)^2)*dr
   }
+  K_base <- case$res_is$K_base
+  diff_base <- sum((K_true$border^q - K_base$border^q)^2)*dr
   return(list(normalized = diff_norm,
-              unnormalized = diff_unnorm))
+              unnormalized = diff_unnorm,
+              base = diff_base))
 }
 
+# Basic study: ----
 
-# Overview: ----
-for(group_nr in 1:length(simStudyResults)){
-  group <- simStudyResults[[group_nr]]
-  print("#######################################################################")
-  print(paste("----------- Analysis of results from group", group_nr, ": -----------"))
-  print("#######################################################################")
-  res_true <- group[[1]]$res_true
-  par_goal <- group[[1]]$par_goal
-
-  print("Some information from this group:")
-  print(paste("kappa_goal:", par_goal$kappa))
-  print(paste("omega_goal:", par_goal$omega))
-  print(paste("mu_goal:", par_goal$mu))
-  print(paste("rho_true:", res_true$rho_true))
-
-
-  for(case_nr in 1:length(group)){
-    case <- group[[case_nr]]
-    par_0 <- case$par_0
-
-    print("")
-    print(paste("----------- Analysis of results from case", case_nr, ": -----------"))
-
-    print("Some information from this case:")
-    print(paste("kappa_0:", par_goal$kappa))
-    print(paste("omega_0:", par_goal$omega))
-    print(paste("mu_0:", par_goal$mu))
-
-    # print(paste("rho:", res_true$rho_true)) not available in study2
-    rho_diff <- res_true$rho_true - case$res_is$rho_is
-    rho_diff_norm <- res_true$rho_true - case$res_is$rho_is_norm
-    print("Differences in rho with unnormalized IS weights:")
-    print(rho_diff)
-    print("Differences in rho with normalized IS weights:")
-    print(rho_diff_norm)
-
-    K_diff <- calc_K_diff(K_true = res_true$K_true, K_norm = case$res_is$K_is_norm, K_unnorm = case$res_is$K_is)
-
-    print("Contrast of K-function with unnormalized IS weights:")
-    print(K_diff$unnormalized)
-    print("Contrast of K-function with normalized IS weights:")
-    print(K_diff$normalized)
-  }
-  print("")
-  print("")
-}
-
-# Visual inspections
-
-group_nr <- 1
-case_nr <- 2
+group_nr <- 2
 
 group <- simStudyResults[[group_nr]]
-case <- simStudyResults[[group_nr]][[1]]
+res_true <- group$res_true
 
-rho_df <- data.frame(x = log(case$nSamples), rho_unnorm = case$res_is$rho_is,
-                     rho_norm = case$res_is$rho_is_norm, case = 1)
-K_df <- data.frame(x = log(nSamples), )
-for(i in 2:length(group)){
-  rho_df <- rbind(rho_df,
-                  data.frame(x = log(group[[i]]$nSamples), rho_unnorm = group[[i]]$res_is$rho_is,
-                             rho_norm = group[[i]]$res_is$rho_is_norm, case = i))
+case_nr <- 6
+case <- group$res_cases[[case_nr]]
+print(exp(group$par_goal))
+print(exp(case$par_0))
+
+# Intensity
+ymax <- max(c(res_true$rho_true, case$res_is$rho_is, case$res_is$rho_is_norm, case$res_is$rho_base))*1.1
+ymin <- min(c(res_true$rho_true, case$res_is$rho_is, case$res_is$rho_is_norm, case$res_is$rho_base))*0.9
+
+plot(x = log(group$nSamples), y = case$res_is$rho_is_norm, type = "l",
+     ylim = c(ymin,ymax))
+lines(x = log(group$nSamples), y = case$res_is$rho_is, lty = 2)
+abline(h = res_true$rho_true, col = "red")
+abline(h = case$res_is$rho_base, col = "purple")
+
+# K-function
+K_diff <- calc_K_diff(res_true$K_true, case)
+
+print(K_diff$base)
+plot(x = log(group$nSamples), y = K_diff$normalized, type = "l")
+lines(x = log(group$nSamples), y = K_diff$unnormalized, lty = 2)
+abline(h = K_diff$base, col = "red")
+
+plot(x = res_true$K_true$r, y = res_true$K_true$border^0.25, type = "l")
+lines(x = res_true$K_true$r, y = case$res_is$K_base$border^0.25, col = "red")
+lines(x = res_true$K_true$r, y = case$res_is$K_is[[13]]$border^0.25, col = "purple", lty = 2)
+lines(x = res_true$K_true$r, y = case$res_is$K_is_norm[[13]]$border^0.25, col = "orange", lty = 2)
+
+# Look at effective sample size
+ess <- 1/sum((case$res_is$w_is/sum(case$res_is$w_is))^2)
+
+ess_vec <- sapply(X = group$res_cases, FUN = function(case) 1/sum((case$res_is$w_is/sum(case$res_is$w_is))^2))
+ess_vec[2:length(ess_vec)]
+which.max(ess_vec[2:length(ess_vec)])
+
+exp(group$res_cases[[which.max(ess_vec[2:length(ess_vec)])+1]]$par_0)
+exp(group$par_goal)
+
+# Window study: ----
+rm(list = ls())
+load("studyWindow.RDa")
+
+window_case <- simStudyResults[[1]]
+calc_ess <- function(window_case){
+  window_case <- window_case[[1]]
+  ess_vec <- sapply(X = window_case$res_cases, FUN = function(case) 1/sum((case$res_is$w_is/sum(case$res_is$w_is))^2))
+  return(ess_vec)
 }
 
-ggplot(data = rho_df, mapping = aes(x = x, y = rho_unnorm, colour = case)) +
-  geom_line() +
-  #geom_line(mapping = aes(x = x, y = rho_norm, colour = case), linetype = "dashed") +
-  geom_hline(yintercept = case$res_true$rho_true)
+ess <- lapply(X = simStudyResults, calc_ess)
 
-plot(x = log(case$nSamples), y = case$res_is$rho_is_norm, type = "l")
-lines(x = log(case$nSamples), y = case$res_is$rho_is, lty = 2)
-abline(h = case$res_true$rho_true, col = "red")
-plot(x = log(case$nSamples), y = case$res_is$rho_is_norm, type = "l")
+ess[[1]]
+ess[[2]]
+ess[[3]]
+ess[[4]]
+ess[[5]]
+ess[[6]]
 
+# Kappa study: ----
+rm(list = ls())
+load("studyKappa.RDa")
+
+calc_ess <- function(window_case){
+  #window_case <- window_case[[1]]
+  ess_vec <- sapply(X = window_case$res_cases, FUN = function(case) 1/sum((case$res_is$w_is/sum(case$res_is$w_is))^2))
+  return(ess_vec)
+}
+ess <- lapply(X = simStudyResults, calc_ess)
+
+ess_max <- sapply(ess, max)
+ess_max

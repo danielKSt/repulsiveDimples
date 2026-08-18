@@ -1,0 +1,411 @@
+---
+title: "Importance Sampling for Thomas Processes: Perturbation, Window and Kappa Studies"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+params:
+  study3a_file: "study3a.RDa"
+  study4_file: "study4.RDa"
+  window_file: "studyWindow.RDa"
+  kappa_file: "studyKappa.RDa"
+  repRange: 0.4
+  n_probe: 400
+  probe_cache: "point_counts_cache.rds"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+need <- c("plotly", "DT")
+missing <- need[!vapply(need, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing) > 0) {
+  stop("Missing package(s): ", paste(missing, collapse = ", "),
+       '. Install with: install.packages(c("', paste(missing, collapse = '", "'), '"))')
+}
+library(plotly)
+library(DT)
+suppressMessages(library(repulsiveDimples))
+if (is.null(getOption("mc.cores"))) options(mc.cores = parallel::detectCores())
+```
+
+```{r load}
+load_one <- function(f) { e <- new.env(); load(f, envir = e); get(ls(e)[1], envir = e) }
+study3a  <- load_one(params$study3a_file)
+study4   <- load_one(params$study4_file)
+studyWin <- load_one(params$window_file)   # outer level = sidelength
+studyKap <- load_one(params$kappa_file)
+
+# The two perturbation studies share a shape, so they are handled together and
+# every row carries the study it came from.
+perturb <- list(study3a = study3a, study4 = study4)
+```
+
+```{r helpers}
+# Effective sample size of a set of importance weights. Ranges from 1 (one
+# realization carries all the weight) to n (all weights equal).
+ess <- function(w) sum(w)^2 / sum(w^2)
+
+# K-function contrast, matching the optimizer's objective.
+K_contrast <- function(K_true, K_est, q = 1/4) {
+  dr <- K_true$r[2] - K_true$r[1]
+  sum((K_true$border^q - K_est$border^q)^2) * dr
+}
+
+# Relative RMS error in K. Unlike the contrast above this is comparable across
+# cases that use different r grids, which matters for the window sweep.
+K_relerr_pct <- function(K_true, K_est) {
+  100 * sqrt(mean((K_est$border - K_true$border)^2)) / sqrt(mean(K_true$border^2))
+}
+
+# Parameters are stored on the log scale, so a delta is a log difference; the
+# natural-unit effect is the multiplicative factor exp(delta).
+delta_of <- function(par_0, par_goal) {
+  d <- unlist(par_0 - par_goal)
+  nz <- names(d)[abs(d) > 1e-8]
+  if (length(nz) == 0) list(par = "none", value = 0, label = "delta = 0 (par_0 = par_goal)")
+  else if (length(nz) == 1)
+    list(par = nz, value = d[[nz]],
+         label = sprintf("%s %+.2f (x%.2f)", nz, d[[nz]], exp(d[[nz]])))
+  else list(par = "multiple", value = NA_real_,
+            label = paste(sprintf("%s %+.2f (x%.2f)", nz, d[nz], exp(d[nz])), collapse = ", "))
+}
+
+fmt_par <- function(p) {
+  v <- exp(unlist(p))
+  sprintf("kappa=%.3g, omega=%.3g, mu=%.3g", v[["kappa"]], v[["omega"]], v[["mu"]])
+}
+
+# Expected unthinned daughter count is exact: the Thomas process has intensity
+# kappa*mu, and daughters are generated on the window padded by repRange.
+E_daughters <- function(kappa, mu, side, repRange) kappa * mu * (side + 2 * repRange)^2
+
+# Expected parent count is NOT reliably kappa * area(B): spatstat pads the parent
+# window by 4*omega per side, but the realized parent count sits below
+# kappa*area(B) by an amount that varies with the parameters (measured up to 9%).
+# It is therefore measured by simulation rather than taken from a formula, and
+# cached so that re-knitting is cheap.
+measure_parents <- function(combos, n_probe, cache_file) {
+  key <- function(m) apply(m, 1, function(r) paste(signif(r, 10), collapse = "|"))
+  cache <- if (file.exists(cache_file)) readRDS(cache_file) else list()
+  k <- key(combos)
+  todo <- unique(k[!(k %in% names(cache))])
+  if (length(todo) > 0) {
+    first <- match(todo, k)
+    for (i in first) {
+      r <- combos[i, ]
+      sims <- parallel::mclapply(seq_len(n_probe), function(j)
+        rThomas_matern_thinned(kappa = r[["kappa"]], scale = r[["omega"]], mu = r[["mu"]],
+                               repulsionRange = r[["repRange"]],
+                               xlims = c(0, r[["side"]]), ylims = c(0, r[["side"]]),
+                               saveparents = TRUE))
+      cache[[k[i]]] <- c(parents   = mean(vapply(sims, function(p) nrow(p$parent), numeric(1))),
+                         daughters = mean(vapply(sims, function(p) nrow(p$daughter), numeric(1))),
+                         thinned   = mean(vapply(sims, function(p) nrow(p$thinned), numeric(1))))
+    }
+    saveRDS(cache, cache_file)
+  }
+  do.call(rbind, cache[k])
+}
+
+# Flatten one group (a par_goal with its delta cases) into one row per case.
+group_rows <- function(grp, study, group_id) {
+  do.call(rbind, lapply(seq_along(grp$res_cases), function(j) {
+    cs <- grp$res_cases[[j]]
+    ri <- cs$res_is
+    n_last <- length(ri$rho_is)
+    d  <- delta_of(cs$par_0, grp$par_goal)
+    Kt <- grp$res_true$K_true
+    data.frame(
+      study = study, group = group_id, case = j,
+      delta = d$label, delta_par = d$par, delta_log = d$value, delta_factor = exp(d$value),
+      goal = fmt_par(grp$par_goal), sim_par = fmt_par(cs$par_0),
+      kappa_0 = exp(cs$par_0$kappa), omega_0 = exp(cs$par_0$omega), mu_0 = exp(cs$par_0$mu),
+      side = cs$xlims_sim[2] - cs$xlims_sim[1],
+      nSims = length(ri$w_is),
+      ESS = ess(ri$w_is),
+      ESS_pct = 100 * ess(ri$w_is) / length(ri$w_is),
+      rho_true = grp$res_true$rho_true,
+      rho_base = ri$rho_base,
+      rho_norm = ri$rho_is_norm[n_last],
+      rho_unnorm = ri$rho_is[n_last],
+      rho_relerr_norm_pct   = 100 * (ri$rho_is_norm[n_last] - grp$res_true$rho_true) / grp$res_true$rho_true,
+      rho_relerr_unnorm_pct = 100 * (ri$rho_is[n_last] - grp$res_true$rho_true) / grp$res_true$rho_true,
+      rho_relerr_base_pct   = 100 * (ri$rho_base - grp$res_true$rho_true) / grp$res_true$rho_true,
+      K_relerr_norm_pct = K_relerr_pct(Kt, ri$K_is_norm[[n_last]]),
+      K_relerr_base_pct = K_relerr_pct(Kt, ri$K_base),
+      K_contrast_norm   = K_contrast(Kt, ri$K_is_norm[[n_last]]),
+      K_contrast_unnorm = K_contrast(Kt, ri$K_is[[n_last]]),
+      K_contrast_base   = K_contrast(Kt, ri$K_base),
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+
+attach_counts <- function(df, n_probe, cache_file, repRange) {
+  combos <- data.frame(kappa = df$kappa_0, omega = df$omega_0, mu = df$mu_0,
+                       side = df$side, repRange = repRange)
+  cnt <- measure_parents(combos, n_probe = n_probe, cache_file = cache_file)
+  df$E_parents   <- cnt[, "parents"]
+  df$E_daughters <- cnt[, "daughters"]
+  df$E_thinned   <- cnt[, "thinned"]
+  df$E_unthinned_analytic <- E_daughters(df$kappa_0, df$mu_0, df$side, repRange)
+  df$E_total_latent <- df$E_parents + df$E_daughters
+  df
+}
+```
+
+This report covers four studies:
+
+- **`r params$study3a_file`** and **`r params$study4_file`** -- per-parameter perturbation curves on the same two parameter regimes. Study 4 repeats study 3a on a **4x4** window instead of **6x6**, with log-deltas capped at **+-0.8** and concentrated near zero, after study 3a's effective sample size turned out to have collapsed across most of its grid. Both appear together below, with a `study` column separating them.
+- **`r params$window_file`** -- the same perturbations at a sequence of window sizes.
+- **`r params$kappa_file`** -- the same perturbations across a sweep of `kappa` goals.
+
+All parameters are stored on the **log scale**, so a delta of `+0.40` means the simulation parameter is `exp(0.40) = 1.49` times the target. Tables show both (`delta_log` and `delta_factor`).
+
+**ESS** is the effective sample size $\left(\sum w_i\right)^2 / \sum w_i^2$: the number of equally-weighted realizations the weighted ensemble is worth. `ESS_pct` expresses it as a percentage of `nSims`, so 100% means perfectly even weights and a value near 0 means a handful of realizations dominate.
+
+# Per-parameter perturbations: study 3a and study 4
+
+```{r perturb-rows}
+pert <- do.call(rbind, lapply(names(perturb), function(nm) {
+  do.call(rbind, lapply(seq_along(perturb[[nm]]), function(g)
+    group_rows(perturb[[nm]][[g]], study = nm, group_id = g)))
+}))
+pert <- attach_counts(pert, params$n_probe, params$probe_cache, params$repRange)
+```
+
+One row per (study, group, case), evaluated at the largest `nSamples`. The `study` column carries which study the row came from, and `side` its window size -- filter or sort on either to separate them. Rows are shaded where the normalized intensity estimate is more than 10% off, and where ESS falls below 1% of `nSims`.
+
+```{r perturb-table}
+show <- pert[, c("study","group","side","case","delta","delta_par","delta_log","goal",
+                 "E_total_latent","nSims","ESS","ESS_pct",
+                 "rho_relerr_norm_pct","rho_relerr_unnorm_pct","rho_relerr_base_pct",
+                 "K_relerr_norm_pct","K_relerr_base_pct","K_contrast_norm")]
+datatable(show, rownames = FALSE, filter = "top",
+          options = list(pageLength = 25, scrollX = TRUE,
+                         order = list(list(0, "asc"), list(1, "asc"), list(3, "asc")))) |>
+  formatRound("ESS", 1) |>
+  formatRound(c("delta_log"), 2) |>
+  formatRound("E_total_latent", 1) |>
+  formatRound(c("ESS_pct","rho_relerr_norm_pct","rho_relerr_unnorm_pct","rho_relerr_base_pct",
+                "K_relerr_norm_pct","K_relerr_base_pct"), 2) |>
+  formatSignif("K_contrast_norm", 3) |>
+  formatStyle("study", fontWeight = "bold",
+              color = styleEqual(c("study3a","study4"), c("#b35806","#2166ac"))) |>
+  formatStyle("rho_relerr_norm_pct",
+              backgroundColor = styleInterval(c(-10, 10), c("#f8d7da", "white", "#f8d7da"))) |>
+  formatStyle("ESS_pct", backgroundColor = styleInterval(1, c("#f8d7da", "white")))
+```
+
+## Did the smaller window and tighter grid recover the ESS?
+
+Study 3a and study 4 use the same two parameter regimes, so cases at the same log-delta differ only in window size (6x6 vs 4x4). Use the dropdown to switch which parameter is being perturbed.
+
+```{r ess-vs-delta}
+pert_single <- pert[pert$delta_par %in% c("kappa", "omega", "mu"), ]
+pars <- c("kappa", "omega", "mu")
+
+p <- plot_ly(); idx <- 0; trace_of <- list()
+style <- list(study3a = list(col = "#b35806", sym = "circle"),
+              study4  = list(col = "#2166ac", sym = "diamond"))
+for (pp in pars) {
+  for (st in names(style)) for (g in sort(unique(pert_single$group))) {
+    d <- pert_single[pert_single$delta_par == pp & pert_single$study == st & pert_single$group == g, ]
+    d <- d[order(d$delta_log), ]
+    p <- p |> add_trace(x = d$delta_log, y = d$ESS_pct, type = "scatter",
+                        mode = "lines+markers",
+                        name = sprintf("%s, group %d (%gx%g)", st, g, d$side[1], d$side[1]),
+                        line = list(color = style[[st]]$col,
+                                    dash = if (g == 1) "solid" else "dot"),
+                        marker = list(color = style[[st]]$col, symbol = style[[st]]$sym, size = 8),
+                        visible = (pp == "kappa"))
+    idx <- idx + 1
+    trace_of[[paste(pp, st, g)]] <- idx
+  }
+}
+n_total <- idx
+buttons <- lapply(pars, function(pp) {
+  vis <- rep(FALSE, n_total)
+  for (nm in names(trace_of)) if (startsWith(nm, paste0(pp, " "))) vis[trace_of[[nm]]] <- TRUE
+  list(method = "restyle", args = list("visible", vis), label = pp)
+})
+p |> layout(xaxis = list(title = "log-scale delta applied to the perturbed parameter"),
+            yaxis = list(title = "ESS as % of nSims", type = "log"),
+            updatemenus = list(list(active = 0, x = 1, y = 1.15,
+                                    xanchor = "right", buttons = buttons)))
+```
+
+## Convergence against sample size {.tabset}
+
+Each panel shows how the estimate moves as `nSamples` grows, for the unnormalized and self-normalized weighting schemes. Use the dropdown at the top right to switch between perturbation cases.
+
+```{r conv-funs}
+conv_plot <- function(grp, what = c("rho", "K")) {
+  what <- match.arg(what)
+  labels <- vapply(grp$res_cases,
+                   function(cs) delta_of(cs$par_0, grp$par_goal)$label, character(1))
+  p <- plot_ly(); idx <- 0; trace_of <- list()
+
+  for (i in seq_along(grp$res_cases)) {
+    ri <- grp$res_cases[[i]]$res_is
+    if (what == "rho") {
+      y_u <- ri$rho_is; y_n <- ri$rho_is_norm
+    } else {
+      Kt <- grp$res_true$K_true
+      y_u <- vapply(ri$K_is,      function(k) K_contrast(Kt, k), numeric(1))
+      y_n <- vapply(ri$K_is_norm, function(k) K_contrast(Kt, k), numeric(1))
+    }
+    p <- p |> add_lines(x = grp$nSamples, y = y_u, name = "unnormalized",
+                        legendgroup = "u", line = list(color = "firebrick", dash = "dot"),
+                        visible = (i == 1))
+    idx <- idx + 1; trace_of[[paste0(i, "u")]] <- idx
+    p <- p |> add_lines(x = grp$nSamples, y = y_n, name = "normalized",
+                        legendgroup = "n", line = list(color = "steelblue"),
+                        visible = (i == 1))
+    idx <- idx + 1; trace_of[[paste0(i, "n")]] <- idx
+  }
+
+  if (what == "rho") {
+    rt <- grp$res_true$rho_true
+    p <- p |> add_lines(x = range(grp$nSamples), y = c(rt, rt), name = "rho_true",
+                        line = list(color = "black", dash = "dash"), visible = TRUE)
+    idx <- idx + 1
+    yaxis <- list(title = "intensity estimate")
+  } else {
+    yaxis <- list(title = "K contrast vs truth (log scale)", type = "log")
+  }
+  n_total <- idx
+
+  buttons <- lapply(seq_along(grp$res_cases), function(i) {
+    vis <- rep(FALSE, n_total)
+    vis[trace_of[[paste0(i, "u")]]] <- TRUE
+    vis[trace_of[[paste0(i, "n")]]] <- TRUE
+    if (what == "rho") vis[n_total] <- TRUE
+    list(method = "restyle", args = list("visible", vis), label = labels[i])
+  })
+
+  p |> layout(xaxis = list(title = "nSamples", type = "log"), yaxis = yaxis,
+              updatemenus = list(list(active = 0, x = 1, y = 1.15,
+                                      xanchor = "right", buttons = buttons)))
+}
+```
+
+```{r perturb-conv, results="asis"}
+# print()ing a widget inside a results='asis' loop does not register its JS
+# dependencies on its own; knit_meta_add() does that explicitly.
+for (nm in names(perturb)) {
+  for (g in seq_along(perturb[[nm]])) {
+    grp <- perturb[[nm]][[g]]
+    side <- grp$res_cases[[1]]$xlims_sim[2] - grp$res_cases[[1]]$xlims_sim[1]
+    cat(sprintf("\n### %s -- group %d (%gx%g): %s {.tabset}\n\n",
+                nm, g, side, side, fmt_par(grp$par_goal)))
+    for (w in c("rho", "K")) {
+      cat(sprintf("\n#### %s\n\n", if (w == "rho") "Intensity" else "K contrast"))
+      pl <- conv_plot(grp, w)
+      knitr::knit_meta_add(htmltools::findDependencies(pl))
+      print(htmltools::tagList(pl))
+    }
+  }
+}
+```
+
+# Window size and kappa studies
+
+```{r wk-rows}
+win_rows <- do.call(rbind, lapply(seq_along(studyWin), function(s) {
+  do.call(rbind, lapply(seq_along(studyWin[[s]]), function(g)
+    group_rows(studyWin[[s]][[g]], study = "window", group_id = g)))
+}))
+kap_rows <- do.call(rbind, lapply(seq_along(studyKap), function(g)
+  group_rows(studyKap[[g]], study = "kappa", group_id = g)))
+wk <- attach_counts(rbind(win_rows, kap_rows), params$n_probe,
+                    params$probe_cache, params$repRange)
+```
+
+Expected point counts are per realization of the **baseline** ensemble, i.e. at the simulation parameters `par_0`, since those are the patterns the weights are computed on. Daughter counts are the *unthinned* points. Parent and daughter counts are measured from `r params$n_probe` fresh simulations per unique parameter/window combination (cached in `` `r params$probe_cache` ``); the analytic column `kappa*mu*(side+2*repRange)^2` is shown alongside as a check.
+
+`E_total_latent` is parents + unthinned daughters: the number of points the importance weight is a product over, and therefore the quantity most directly implicated in weight degeneracy.
+
+```{r wk-table}
+show2 <- wk[, c("study","side","goal","delta","kappa_0","omega_0","mu_0",
+                "E_parents","E_daughters","E_unthinned_analytic","E_total_latent","E_thinned",
+                "nSims","ESS","ESS_pct",
+                "rho_relerr_norm_pct","rho_relerr_unnorm_pct","rho_relerr_base_pct",
+                "K_relerr_norm_pct","K_relerr_base_pct","K_contrast_norm")]
+datatable(show2, rownames = FALSE, filter = "top",
+          options = list(pageLength = 25, scrollX = TRUE,
+                         order = list(list(0, "asc"), list(1, "asc")))) |>
+  formatRound(c("kappa_0","omega_0","mu_0"), 3) |>
+  formatRound("ESS", 1) |>
+  formatRound(c("E_parents","E_daughters","E_unthinned_analytic","E_total_latent","E_thinned"), 1) |>
+  formatRound(c("ESS_pct","rho_relerr_norm_pct","rho_relerr_unnorm_pct","rho_relerr_base_pct",
+                "K_relerr_norm_pct","K_relerr_base_pct"), 2) |>
+  formatSignif("K_contrast_norm", 3) |>
+  formatStyle("ESS_pct", backgroundColor = styleInterval(1, c("#f8d7da", "white"))) |>
+  formatStyle("rho_relerr_norm_pct",
+              backgroundColor = styleInterval(c(-10, 10), c("#f8d7da", "white", "#f8d7da")))
+```
+
+Note that `K_contrast_norm` integrates over `r`, and the window study uses a shorter `r` grid at small window sizes, so contrasts are **not** comparable across window sizes. `K_relerr_norm_pct` (relative RMS error) is comparable and should be preferred when reading across the sweep.
+
+## ESS against expected point count
+
+```{r wk-ess-plot}
+lab <- function(d) sprintf("%s | side=%g | %s | ESS=%.0f", d$study, d$side, d$delta, d$ESS)
+wk$label <- lab(wk)
+pert$label <- lab(pert)
+plot_ly() |>
+  add_markers(data = wk[wk$study == "window", ], x = ~E_total_latent, y = ~ESS_pct,
+              text = ~label, hoverinfo = "text", name = "window sweep",
+              marker = list(size = 9, color = "steelblue")) |>
+  add_markers(data = wk[wk$study == "kappa", ], x = ~E_total_latent, y = ~ESS_pct,
+              text = ~label, hoverinfo = "text", name = "kappa sweep",
+              marker = list(size = 9, color = "darkorange", symbol = "diamond")) |>
+  layout(xaxis = list(title = "expected latent points per realization (parents + unthinned daughters)",
+                      type = "log"),
+         yaxis = list(title = "ESS as % of nSims", type = "log"))
+```
+
+If degeneracy is driven by the number of points the weight is a product over, the two sweeps should fall on a common curve here despite reaching their point counts by different means (bigger window vs. denser process).
+
+## Estimation error against ESS
+
+Both perturbation studies are included here alongside the window and kappa sweeps, so the relationship can be read across all four.
+
+```{r wk-err-plot}
+allr <- rbind(wk[, intersect(names(wk), names(pert))],
+              pert[, intersect(names(wk), names(pert))])
+plot_ly() |>
+  add_markers(data = allr, x = ~ESS_pct, y = ~abs(rho_relerr_norm_pct),
+              text = ~label, hoverinfo = "text", name = "|rho error| (normalized)",
+              marker = list(size = 8, color = "seagreen", opacity = 0.7)) |>
+  add_markers(data = allr, x = ~ESS_pct, y = ~K_relerr_norm_pct,
+              text = ~label, hoverinfo = "text", name = "K relative RMS error",
+              marker = list(size = 8, color = "purple", symbol = "square", opacity = 0.7)) |>
+  layout(xaxis = list(title = "ESS as % of nSims", type = "log"),
+         yaxis = list(title = "relative error (%)", type = "log"))
+```
+
+## How far does importance sampling have to move the estimate?
+
+The baseline columns (`rho_relerr_base_pct`, `K_relerr_base_pct`) are the error of the **unweighted** ensemble, i.e. what you would get by ignoring the weights entirely. Where these are already small, the summary statistic barely responds to the parameter being perturbed, and the case says little about whether the weights are doing their job.
+
+```{r wk-base-plot}
+plot_ly() |>
+  add_markers(data = allr, x = ~abs(rho_relerr_base_pct), y = ~abs(rho_relerr_norm_pct),
+              text = ~label, hoverinfo = "text", name = "intensity",
+              marker = list(size = 8, color = "seagreen", opacity = 0.7)) |>
+  add_markers(data = allr, x = ~K_relerr_base_pct, y = ~K_relerr_norm_pct,
+              text = ~label, hoverinfo = "text", name = "K-function",
+              marker = list(size = 8, color = "purple", symbol = "square", opacity = 0.7)) |>
+  add_lines(x = c(1e-3, 1e3), y = c(1e-3, 1e3), name = "no improvement",
+            line = list(color = "grey", dash = "dash")) |>
+  layout(xaxis = list(title = "|error| of unweighted baseline (%)", type = "log"),
+         yaxis = list(title = "|error| after importance sampling (%)", type = "log"))
+```
+
+Points below the dashed line are cases where the weights improved on the unweighted baseline; points above it are cases where reweighting made the estimate worse.
