@@ -37,8 +37,6 @@ intensity_est <- function(points_input, l, timescale){
 #' @export
 K_est.unions <- function(points_input, l, spacing, rMax = 5, dr = 0.05, r_vec = NULL, timescale){
   snapshots <- seq(from = 1, to = length(points_input), by = ceiling(timescale))
-  points.ppp <- vector(mode = "list", length = length(snapshots))
-  nPoints <- 0
 
   complete_owin <- spatstat.geom::owin(c(0,l), c(0,l))
   for (t_ind in 1:(length(snapshots)-1)) {
@@ -52,15 +50,13 @@ K_est.unions <- function(points_input, l, spacing, rMax = 5, dr = 0.05, r_vec = 
     first_found <- !is.numeric(points_input[[snapshots[t_first]]])
   }
 
-  combined.points <- points_input[[snapshots[t_first]]][, 1:2]*l
+  combined.points <- points_input[[snapshots[t_first]]][, 1:2]
   for (t_ind in (t_first+1):length(snapshots)) {
     t <- snapshots[t_ind]
     if(!is.numeric(points_input[[t]])){
-      combined.points <- rbind(combined.points, points_input[[t]][, 1:2]*l + spacing*(t_ind-1)*l)
-      nPoints <- nPoints + length(points_input[[t]]$x)
+      combined.points <- rbind(combined.points, points_input[[t]][, 1:2] + spacing*(t_ind-1)*l)
     }
   }
-  l_hat <- nPoints/length(snapshots)
   combined.points <- spatstat.geom::ppp(x = combined.points$x, y = combined.points$y, window = complete_owin)
 
   if(is.null(r_vec)){

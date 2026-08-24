@@ -10,7 +10,8 @@ trust_line_steps(
   x_0,
   delta_hat,
   trust_function,
-  bisection_count = 11
+  subsection_count = 11,
+  iterations = 4
 )
 }
 \arguments{
@@ -24,7 +25,9 @@ trust_line_steps(
 
 \item{trust_function}{Trust function}
 
-\item{bisection_count}{Number of bisections}
+\item{subsection_count}{Number of bisections}
+
+\item{iterations}{How many times to subdivide the line}
 }
 \description{
 Line optimization for the trust steps

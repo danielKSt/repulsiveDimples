@@ -21,13 +21,14 @@
 #' @param delta_hat trust radius
 #' @param eta Trust region parameter
 #' @param delta_max Greatest trust region radius allowed
+#' @param delta_min Convergence tolerance for trust region radius
 #' @param tol Convergence tolerance
 #' @param max.iter Maximum iterations
 #' @param printProgress Set to TRUE to get updates on progress while running
 #'
 #' @export
 min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat, K_hat,
-                                      xlims, ylims, nSims, delta_hat, eta, delta_max,
+                                      xlims, ylims, nSims, delta_hat, eta, delta_max, delta_min = 0.001,
                                       wq = c(1000, 1/4), normalized = FALSE,
                                       tol = 10^-8, max.iter = 10000, printProgress = FALSE){
   # Initialize output: ----
@@ -83,11 +84,17 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
 
   # Iteration loop ----
   while((nSteps < max.iter) && !converged){
-    if(printProgress){print(paste("Starting iteration number: ", nSteps))}
+
+    if(printProgress){
+      print(paste("Starting iteration number: ", nSteps))
+      iter_start_time <- Sys.time()
+    }
     res <- trust_step(x_0 = x_sim, delta_hat = delta_hat, trust_function = trust_function)
     params_star <- params
     params_star[par_free_index] <- res$x_star
     if(printProgress){
+      iter_trust_step_time <- Sys.time()
+      print(paste("Time on trust step: ", iter_trust_step_time - iter_start_time))
       patternSim_star <- mcprogress::pmclapply(X = rep(exp(params_star[1]), nSims), FUN = rThomas_matern_thinned,
                                                scale = exp(params_star[2]), mu = exp(params_star[3]),
                                                repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
@@ -149,7 +156,7 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
       }
     }
     change_after_step <- sum((x_sequence[nSteps + 1, ] - x_sequence[nSteps, ])^2)
-    converged <- (change_after_step < tol) && (sum(abs(res$x_star - x_sim)) < tol)
+    converged <- ((change_after_step < tol) && (sum(abs(res$x_star - x_sim)) < tol) && (delta_hat < delta_min))
     nSteps <- nSteps + 1
   }
   return(list(params = x_sequence[1:nSteps, ],
@@ -218,7 +225,7 @@ trust_step <- function(x_0, delta_hat, trust_function){
   n <- length(x_0)
   if(n == 1){
     x_k <- trust_line_steps(p_k = c(1), x_k = x_0, trust_function = trust_function,
-                            bisection_count = 13, delta_hat = delta_hat, x_0 = x_0)
+                            subsection_count = 13, delta_hat = delta_hat, x_0 = x_0)
     return(list(x_star = x_k,
                 f_pred = trust_function(x_k)))
   }
@@ -266,26 +273,27 @@ trust_step <- function(x_0, delta_hat, trust_function){
 #' @param x_k Search starting point
 #' @param x_0 Center of trust region
 #' @param delta_hat Radius of trust region
-#' @param bisection_count Number of bisections
+#' @param subsection_count Number of bisections
 #' @param trust_function Trust function
+#' @param iterations How many times to subdivide the line
 #'
 #' @export
-trust_line_steps <- function(p_k, x_k, x_0, delta_hat, trust_function, bisection_count = 11){
-  alpha_max <- abs((sum(abs(x_k-x_0)) - delta_hat))
-  alpha_k <- seq(from = -alpha_max, to = alpha_max, length.out = bisection_count)
-  z_k <- matrix(data = NA, nrow = length(x_k), ncol = bisection_count)
+trust_line_steps <- function(p_k, x_k, x_0, delta_hat, trust_function, subsection_count = 11, iterations = 4){
+  alpha_range <- find_alpha_range(x_k, x_0, p_k, delta_hat)
+  alpha_k <- seq(from = alpha_range[1], to = alpha_range[2], length.out = subsection_count)
+  z_k <- matrix(data = NA, nrow = length(x_k), ncol = subsection_count)
   for(i in 1:length(x_k)){
     z_k[i, ] <- x_k[i] + p_k[i] * alpha_k
   }
   f_vals <- apply(X = z_k, MARGIN = 2, FUN = trust_function)
   j_opt <- which.min(f_vals)
-  for(j in 1:5){
+  for(j in 1:iterations){
     if(j_opt < 3){
       j_opt <- 3
-    } else if(j_opt > bisection_count - 2){
-      j_opt <- bisection_count - 2
+    } else if(j_opt > subsection_count - 2){
+      j_opt <- subsection_count - 2
     }
-    alpha_k <- seq(from = alpha_k[j_opt-2], to = alpha_k[j_opt+2], length.out = bisection_count)
+    alpha_k <- seq(from = alpha_k[j_opt-2], to = alpha_k[j_opt+2], length.out = subsection_count)
     for(i in 1:length(x_k)){
       z_k[i, ] <- x_k[i] + p_k[i] * alpha_k
     }
@@ -293,6 +301,28 @@ trust_line_steps <- function(p_k, x_k, x_0, delta_hat, trust_function, bisection
     j_opt <- which.min(f_vals)
   }
   return(z_k[ ,j_opt])
+}
+
+#' Function to determine allowable range for alpha in line search
+#' @description
+#' We want to do a line search satisfying ||x_k+alpha*p_k - x_0||_2 <= delta_hat
+#'
+#' This function solves the simple quadratic equation needed to find the range of
+#' alpha values that satisfies thiat requirement.
+#'
+#' @param x_k Previous iterate, origin of line search
+#' @param x_0 Midpoint of trust region
+#' @param p_k Direction of line search
+#' @param delta_hat Radius of trust region
+#' @export
+find_alpha_range <- function(x_k, x_0, p_k, delta_hat){
+  a <- t(p_k)%*%p_k
+  b <- 2*t(p_k)%*%(x_k-x_0)
+  const <- t(x_k-x_0)%*%(x_k-x_0) - delta_hat
+  determ <- sqrt(b^2-4*a*const)
+  up_lim <- (determ - b)/(2*a)
+  low_lim <- (-1)*(determ + b)/(2*a)
+  return(c(min(c(low_lim, up_lim)), max(c(low_lim, up_lim))))
 }
 
 #' Evaluate if there is sufficient improvement
