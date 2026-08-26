@@ -55,7 +55,12 @@ min_contrast_trust_region(
 
 \item{normalized}{Normalize IS weights?}
 
-\item{max.iter.prefit}{How many iterations to do at most for the pre-fitting}
+\item{countPrefitLoops}{How many times to repeat the pre-fitting cycle, where one cycle
+is a pure K-function fit of \verb{(log kappa, log omega)} followed by a fit of \verb{log mu}
+alone. Ignored when \code{max.iter.prefit} is 0.}
+
+\item{max.iter.prefit}{How many iterations to do at most for the pre-fitting. Set to 0
+(the default) to skip pre-fitting altogether.}
 
 \item{tol}{Convergence tolerance}
 
@@ -63,8 +68,23 @@ min_contrast_trust_region(
 
 \item{printProgress}{Set to TRUE to get updates on progress while running}
 }
+\value{
+A list with \code{params} (the matrix of iterates, one row per step),
+\code{f_vals} (the contrast value at each iterate), \code{update_evals} (the per-step
+\code{\link{trust_step}} and \code{\link{evaluate_improvement}} output), and
+\code{prefitResults} (the same three quantities for each pre-fitting block, or \code{NULL}
+when no pre-fitting was done).
+}
 \description{
-Minimum contrast estimation using trust region approach with simulation based estimation
-of gradient and SR1 for Hessian approximation.
-This method also uses importance sampling...
+Minimum contrast estimation using a derivative-free trust region approach. Each
+iteration simulates an ensemble at the current parameters (see
+\code{\link{simulation_step}}), minimises the contrast function over the trust
+region by re-weighting that one ensemble with importance sampling (see
+\code{\link{trust_step}}), and then re-simulates at the candidate to decide whether
+to accept the step (see \code{\link{evaluate_improvement}}).
+
+Before the main fit, the parameters can optionally be pre-fitted in blocks: first
+\verb{(log kappa, log omega)} against the K-function alone, then \verb{log mu} against the full
+contrast function. This is repeated \code{countPrefitLoops} times, and is skipped entirely
+when \code{max.iter.prefit} is 0.
 }

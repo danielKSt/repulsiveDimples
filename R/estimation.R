@@ -119,25 +119,42 @@ pcf_est.unions <- function(points_input, bw = NULL, l, spacing, rMax, dr, timesc
 
 #' Minimum inter-point distance for list of points
 #'
-#' @param points_input List of point patterns used for estimation
-#' @param l Side length of observation window
+#' @description
+#' Smallest distance between any two points of the same snapshot, taken over all
+#' snapshots. Used to bound the hard-core repulsion range of the Matern II thinning.
+#'
+#' The smallest pairwise distance within a pattern is the smallest of its
+#' nearest-neighbour distances, so each snapshot is handled by one
+#' \code{spatstat.geom::nndist} call rather than by an explicit loop over all
+#' \eqn{O(n^2)} pairs.
+#'
+#' @param points_input List of point patterns used for estimation. Each element is
+#' either the full output of \code{\link{rThomas_matern_thinned}} (the retained points
+#' are then taken from its `thinned` element) or a `data.frame` with columns `x` and
+#' `y`. Snapshots stored as a bare number, the empty-pattern sentinel used by
+#' \code{\link{K_est.unions}}, are skipped.
+#' @param l Side length of observation window. Also the value returned when no snapshot
+#' holds two or more points.
 #' @param timescale How many indices apart do snapshots need to be in order to be independent?
+#'
+#' @return The smallest inter-point distance found, or `l` if that is smaller.
 #'
 #' @export
 find_min_dist <- function(points_input, timescale = 1, l){
-  # TODO: Use closePairs to speed up
   res <- l
   snapshots <- seq(from = 1, to = length(points_input), by = ceiling(timescale))
-  for (t in 1:length(snapshots)) {
-    current <- points_input[[snapshots[t]]]$thinned
-    if(nrow(current) > 2){
-      for(i in 1:(length(current$x)-1)){
-        for (j in (i+1):length(current$x)) {
-          dist <- sqrt((current$x[i]-current$x[j])^2+(current$y[i]-current$y[j])^2)
-          res <- min(c(dist,res))
-        }
-      }
+  for (t in snapshots) {
+    current <- points_input[[t]]
+    if(is.numeric(current)){
+      next
     }
+    if(!is.null(current$thinned)){
+      current <- current$thinned
+    }
+    if(length(current$x) < 2){
+      next
+    }
+    res <- min(c(res, spatstat.geom::nndist(current$x, current$y)))
   }
   return(res)
 }

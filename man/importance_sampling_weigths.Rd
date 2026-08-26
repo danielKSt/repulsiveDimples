@@ -47,7 +47,9 @@ from the cached value; otherwise the cached kernel sums are reused. Pass \code{N
 }
 \value{
 A list with \code{w_is} (the importance sampling weights) and \code{daughter_kernel_cache}
-(to be passed back into the next call for reuse when \code{omega} is unchanged).
+(to be passed back into the next call for reuse when \code{omega} is unchanged). When the
+target and simulation parameters coincide the weights are all exactly 1 and
+\code{daughter_kernel_cache} is returned unchanged.
 }
 \description{
 Use importance sampling to estimate the Ripleys' K-function for parameter values

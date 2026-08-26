@@ -14,11 +14,19 @@ rho_importance_sampling(
 \arguments{
 \item{w_is}{Importance sampling weights}
 
-\item{rho_baseline}{rho_baseline}
+\item{rho_baseline}{Numeric vector of per-pattern baseline intensity estimates, one
+per element of \code{patternSim}, as returned by \code{\link{estimate_rho_baseline}}. Pass
+these in when they have already been computed (e.g. by
+\code{\link{simulation_step}}) to avoid re-estimating them.}
 
-\item{patternSim}{List of point patterns to use for estimation}
+\item{patternSim}{List of point patterns to use for estimation. Only used when
+\code{rho_baseline} is \code{NULL}, in which case the baseline intensities are estimated from
+the patterns with \code{\link{estimate_rho_baseline}}.}
 
 \item{normalized}{Set to TRUE if you want to normalize the importance sampling ratios}
+}
+\value{
+A scalar estimate of the stationary intensity under the target parameters.
 }
 \description{
 Using a thinned Thomas process simulated with parameters kappa_0, mu_0, and omega_0,

@@ -14,6 +14,39 @@ simulation_step(
   printProgress = FALSE
 )
 }
+\arguments{
+\item{nSims}{Number of patterns to simulate.}
+
+\item{params}{Log-scale parameter vector \verb{(log kappa, log omega, log mu)} to simulate
+from.}
+
+\item{repRange}{Repulsion range of the Matern II thinning, passed to
+\code{\link{rThomas_matern_thinned}}.}
+
+\item{xlims}{Simulation window x limits.}
+
+\item{ylims}{Simulation window y limits.}
+
+\item{K_hat}{Estimated K-function for the data. Only \code{K_hat$r} is used, to fix the
+radii the baseline K-functions are evaluated on.}
+
+\item{printProgress}{Set to TRUE to report progress while simulating and computing.}
+}
+\value{
+A list with \code{patternSim} (the simulated ensemble), \code{rho_baseline},
+\code{K_lambda_baseline}, \code{log_f_kappa_0}, \code{log_fCond_theta_0}, and
+\code{daughter_kernel_cache} (in the form \code{\link{importance_sampling_weigths}}
+expects).
+}
 \description{
-This function performs the simulation step in our optimizer.
+Draws a fresh ensemble of \code{nSims} thinned Thomas patterns at \code{params} and computes
+everything about that ensemble which the subsequent importance sampling evaluations
+need: the baseline log-densities under \code{params} itself (the denominator of every
+importance sampling weight taken against this ensemble), the per-pattern baseline
+intensity and unnormalized K-function, and the daughter kernel sums at this
+\code{params}' omega.
+
+Everything in the returned list refers to the same ensemble, so it is passed around
+as a single object (see \code{\link{contrast_is}}) rather than as separate vectors
+that have to be kept in step with each other by hand.
 }

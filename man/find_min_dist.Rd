@@ -7,12 +7,26 @@
 find_min_dist(points_input, timescale = 1, l)
 }
 \arguments{
-\item{points_input}{List of point patterns used for estimation}
+\item{points_input}{List of point patterns used for estimation. Each element is
+either the full output of \code{\link{rThomas_matern_thinned}} (the retained points
+are then taken from its \code{thinned} element) or a \code{data.frame} with columns \code{x} and
+\code{y}. Snapshots stored as a bare number, the empty-pattern sentinel used by
+\code{\link{K_est.unions}}, are skipped.}
 
 \item{timescale}{How many indices apart do snapshots need to be in order to be independent?}
 
-\item{l}{Side length of observation window}
+\item{l}{Side length of observation window. Also the value returned when no snapshot
+holds two or more points.}
+}
+\value{
+The smallest inter-point distance found, or \code{l} if that is smaller.
 }
 \description{
-Minimum inter-point distance for list of points
+Smallest distance between any two points of the same snapshot, taken over all
+snapshots. Used to bound the hard-core repulsion range of the Matern II thinning.
+
+The smallest pairwise distance within a pattern is the smallest of its
+nearest-neighbour distances, so each snapshot is handled by one
+\code{spatstat.geom::nndist} call rather than by an explicit loop over all
+\eqn{O(n^2)} pairs.
 }

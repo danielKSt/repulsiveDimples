@@ -5,11 +5,9 @@
 \title{Estimate both the contrast function and gradient of the contrast function using importance sampling}
 \usage{
 evaluate_contrast_and_gradient(
-  patternSim,
+  simStepRes,
   params,
   params_0,
-  rho_baseline,
-  K_lambda_baseline,
   rho_hat,
   K_hat,
   par_free_index,
@@ -19,15 +17,11 @@ evaluate_contrast_and_gradient(
 )
 }
 \arguments{
-\item{patternSim}{Simulated pattern}
+\item{simStepRes}{Result from the simulation step, see \code{\link{simulation_step}}.}
 
 \item{params}{Parameters to use in estimation}
 
 \item{params_0}{Parameters used for simulation}
-
-\item{rho_baseline}{rho_baseline}
-
-\item{K_lambda_baseline}{K_lambda_baseline}
 
 \item{rho_hat}{Estimated intensity for data}
 

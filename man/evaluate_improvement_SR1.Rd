@@ -10,12 +10,10 @@ evaluate_improvement_SR1(
   params_old,
   params_sim,
   predicted_reduction,
-  patternSim,
+  simStepRes,
   K_hat,
   rho_hat,
   wq,
-  rho_baseline,
-  K_lambda_baseline,
   normalized,
   delta_hat,
   eta
@@ -28,21 +26,19 @@ evaluate_improvement_SR1(
 
 \item{params_old}{Parameter values of the previous iteration}
 
-\item{params_sim}{Parameter values used to simulate  patternSim}
+\item{params_sim}{Parameter values used to simulate the ensemble in \code{simStepRes}}
 
 \item{predicted_reduction}{Step for derivative calculation}
 
-\item{patternSim}{simulated point pattern to use}
+\item{simStepRes}{Result from the simulation step, see \code{\link{simulation_step}}. It must be the ensemble
+simulated at \code{params_sim}, since that is the density the importance sampling weights
+are taken against.}
 
 \item{K_hat}{Estimated K-function for data}
 
 \item{rho_hat}{Estimated intensity for data}
 
 \item{wq}{Weights for contrast function}
-
-\item{rho_baseline}{rho_baseline}
-
-\item{K_lambda_baseline}{K_lambda_baseline}
 
 \item{normalized}{Normalize IS weights?}
 

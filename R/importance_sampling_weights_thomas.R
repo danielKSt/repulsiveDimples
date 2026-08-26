@@ -20,13 +20,23 @@
 #' (the default) to always recompute.
 #'
 #' @return A list with `w_is` (the importance sampling weights) and `daughter_kernel_cache`
-#' (to be passed back into the next call for reuse when `omega` is unchanged).
+#' (to be passed back into the next call for reuse when `omega` is unchanged). When the
+#' target and simulation parameters coincide the weights are all exactly 1 and
+#' `daughter_kernel_cache` is returned unchanged.
 #'
 #' @export
 importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 = NULL, omega_0 = NULL,
                                         patternSim, log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL,
                                         parallel = FALSE, daughter_kernel_cache = NULL){
-  # TODO: Check if parameters are equal in the simulation parameters and target parameters, if they are, use only log_f_kappa_0 and log_fCond_theta_0
+  # Target and simulation parameters coincide, so every weight is
+  # exp(log_f_kappa_0 + log_fCond_theta_0 - log_f_kappa_0 - log_fCond_theta_0) = 1 and
+  # none of the densities have to be touched at all. This is the case whenever an
+  # ensemble is evaluated at the very parameters it was simulated from, which the
+  # trust region optimizer does once per iteration to score a candidate step.
+  if(isTRUE(kappa == kappa_0) && isTRUE(omega == omega_0) && isTRUE(mu == mu_0)){
+    return(list(w_is = rep(1, length(patternSim)),
+                daughter_kernel_cache = daughter_kernel_cache))
+  }
 
   # The parent log-density is O(1) per pattern given the enlarged-window area and
   # the parent count, and both of those are parameter-independent, so the two

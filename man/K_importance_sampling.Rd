@@ -16,15 +16,26 @@ K_importance_sampling(
 \arguments{
 \item{w_is}{Importance sampling weights}
 
-\item{K_lambda_baseline}{K_lambda_baseline}
+\item{K_lambda_baseline}{List of per-pattern baseline estimates of the unnormalized
+K-function \eqn{\lambda^2 K(r)}, one per element of \code{patternSim}, as returned by
+\code{\link{estimate_K_lambda_baseline}}.}
 
-\item{rho_baseline}{rho_baseline}
+\item{rho_baseline}{Numeric vector of per-pattern baseline intensity estimates, one
+per element of \code{patternSim}, as returned by \code{\link{estimate_rho_baseline}}. Used
+to divide the unnormalized K-function by the squared intensity.}
 
-\item{r_vec}{r_vec}
+\item{r_vec}{Vector of radii to estimate for. Only used when \code{K_lambda_baseline} is
+\code{NULL} and the baselines have to be estimated from \code{patternSim}.}
 
-\item{patternSim}{List of point patterns to use for estimation}
+\item{patternSim}{List of point patterns to use for estimation. Only used when
+\code{K_lambda_baseline} or \code{rho_baseline} is \code{NULL}, in which case the missing baselines
+are estimated from the patterns.}
 
 \item{normalized}{Set to TRUE if you want to normalize the importance sampling ratios}
+}
+\value{
+A \code{data.frame} with columns \code{r} and \code{border}, giving the estimated K-function
+under the target parameters.
 }
 \description{
 Use importance sampling to estimate the Ripleys' K-function for parameter values

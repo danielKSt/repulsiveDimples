@@ -16,7 +16,8 @@
 #' @param parallel_IS_weights Set to TRUE to use parallel computing for the importance weights
 #' @param daughter_kernel_cache Optional cache passed through to \code{\link{importance_sampling_weigths}};
 #' see that function for details. Pass the `daughter_kernel_cache` from this call's return value into
-#' the next call to reuse cached work when `params_new`'s omega is unchanged.
+#' the next call to reuse cached work when `params_new`'s omega is unchanged. When `NULL`, the cache
+#' `simStepRes` already carries from its own simulation step is used instead of starting cold.
 #'
 #' @return A list with `f_est` (the contrast value) and `daughter_kernel_cache` (to be passed back
 #' into the next call for reuse).
@@ -25,7 +26,13 @@
 contrast_is <- function(simStepRes, params_0, params_new, rho_hat, K_hat,
                         normalized = FALSE, wq = c(1000, 1/4),
                         parallel_IS_weights = TRUE, daughter_kernel_cache = NULL){
-  # TODO: (?) If daughter_kernel_cahce is NULL, try to add daughter_kernel_cache from simStepRes.
+  # simStepRes was built by simulation_step(), which already paid for the kernel sums at
+  # its own omega. With no cache handed in there is nothing better to start from, and the
+  # cache carries the omega it belongs to, so it is simply ignored downstream if
+  # params_new moved omega away from it.
+  if(is.null(daughter_kernel_cache)){
+    daughter_kernel_cache <- simStepRes$daughter_kernel_cache
+  }
   is_res <- importance_sampling_weigths(kappa_0 = exp(params_0[1]),
                                         omega_0 = exp(params_0[2]),
                                         mu_0 = exp(params_0[3]),

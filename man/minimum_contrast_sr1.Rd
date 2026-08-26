@@ -56,7 +56,9 @@ minimum_contrast_sr1(
 
 \item{eta}{Trust region parameter}
 
-\item{simulation_threshold}{simulation_threshold}
+\item{simulation_threshold}{How far the iterate may drift, in log-parameter distance,
+from the parameters the current ensemble was simulated at before a fresh ensemble is
+simulated.}
 
 \item{r}{Hyperparameter for SR1 update}
 

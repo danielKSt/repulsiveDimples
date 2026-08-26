@@ -4,9 +4,16 @@
 #' we use importance sampling to estimate
 #'
 #' @param w_is Importance sampling weights
-#' @param patternSim List of point patterns to use for estimation
-#' @param rho_baseline rho_baseline
+#' @param patternSim List of point patterns to use for estimation. Only used when
+#' `rho_baseline` is `NULL`, in which case the baseline intensities are estimated from
+#' the patterns with \code{\link{estimate_rho_baseline}}.
+#' @param rho_baseline Numeric vector of per-pattern baseline intensity estimates, one
+#' per element of `patternSim`, as returned by \code{\link{estimate_rho_baseline}}. Pass
+#' these in when they have already been computed (e.g. by
+#' \code{\link{simulation_step}}) to avoid re-estimating them.
 #' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
+#'
+#' @return A scalar estimate of the stationary intensity under the target parameters.
 #'
 #' @export
 rho_importance_sampling <- function(w_is, rho_baseline, patternSim = NULL, normalized = FALSE){
@@ -40,11 +47,21 @@ estimate_rho_baseline <- function(pattern){
 #' Use importance sampling to estimate the Ripleys' K-function for parameter values
 #'
 #' @param w_is Importance sampling weights
-#' @param patternSim List of point patterns to use for estimation
-#' @param K_lambda_baseline K_lambda_baseline
-#' @param r_vec r_vec
-#' @param rho_baseline rho_baseline
+#' @param patternSim List of point patterns to use for estimation. Only used when
+#' `K_lambda_baseline` or `rho_baseline` is `NULL`, in which case the missing baselines
+#' are estimated from the patterns.
+#' @param K_lambda_baseline List of per-pattern baseline estimates of the unnormalized
+#' K-function \eqn{\lambda^2 K(r)}, one per element of `patternSim`, as returned by
+#' \code{\link{estimate_K_lambda_baseline}}.
+#' @param r_vec Vector of radii to estimate for. Only used when `K_lambda_baseline` is
+#' `NULL` and the baselines have to be estimated from `patternSim`.
+#' @param rho_baseline Numeric vector of per-pattern baseline intensity estimates, one
+#' per element of `patternSim`, as returned by \code{\link{estimate_rho_baseline}}. Used
+#' to divide the unnormalized K-function by the squared intensity.
 #' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
+#'
+#' @return A `data.frame` with columns `r` and `border`, giving the estimated K-function
+#' under the target parameters.
 #'
 #' @export
 K_importance_sampling <- function(w_is, K_lambda_baseline, rho_baseline,
@@ -64,10 +81,19 @@ K_importance_sampling <- function(w_is, K_lambda_baseline, rho_baseline,
 #' Use importance sampling to estimate the Ripleys' K-function for parameter values
 #'
 #' @param w_is Importance sampling weights
-#' @param patternSim List of point patterns to use for estimation
-#' @param K_lambda_baseline K_lambda_baseline
-#' @param r_vec r_vec
+#' @param patternSim List of point patterns to use for estimation. Only used when
+#' `K_lambda_baseline` is `NULL`, in which case the baselines are estimated from the
+#' patterns with \code{\link{estimate_K_lambda_baseline}}.
+#' @param K_lambda_baseline List of per-pattern baseline estimates of the unnormalized
+#' K-function \eqn{\lambda^2 K(r)}, one per element of `patternSim`, as returned by
+#' \code{\link{estimate_K_lambda_baseline}}. Pass these in when they have already been
+#' computed (e.g. by \code{\link{simulation_step}}) to avoid re-estimating them.
+#' @param r_vec Vector of radii to estimate for. Only used when `K_lambda_baseline` is
+#' `NULL` and the baselines have to be estimated from `patternSim`.
 #' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
+#'
+#' @return A `data.frame` with columns `r` and `border`, giving the estimated
+#' unnormalized K-function under the target parameters.
 #'
 #' @export
 K_lambda_importance_sampling <- function(w_is, K_lambda_baseline, r_vec = NULL,

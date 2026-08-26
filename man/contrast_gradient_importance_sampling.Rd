@@ -9,9 +9,7 @@ contrast_gradient_importance_sampling(
   params_sim,
   par_free_index,
   epsilon,
-  patternSim,
-  rho_baseline,
-  K_lambda_baseline,
+  simStepRes,
   normalized,
   rho_hat,
   K_hat,
@@ -22,17 +20,14 @@ contrast_gradient_importance_sampling(
 \arguments{
 \item{params}{Parameter values at which to aproximate the partial derivative}
 
-\item{params_sim}{Parameter values used in simulating patternSim}
+\item{params_sim}{Parameter values used to simulate the ensemble in \code{simStepRes}}
 
 \item{par_free_index}{Indices of parameters to estimate}
 
 \item{epsilon}{Step for derivative calculation}
 
-\item{patternSim}{simulated point pattern to use}
-
-\item{rho_baseline}{rho_baseline}
-
-\item{K_lambda_baseline}{K_lambda_baseline}
+\item{simStepRes}{Result from the simulation step, see \code{\link{simulation_step}}. It must be the ensemble
+simulated at \code{params_sim}.}
 
 \item{normalized}{Normalize IS weights?}
 

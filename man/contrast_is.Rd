@@ -35,7 +35,8 @@ contrast_is(
 
 \item{daughter_kernel_cache}{Optional cache passed through to \code{\link{importance_sampling_weigths}};
 see that function for details. Pass the \code{daughter_kernel_cache} from this call's return value into
-the next call to reuse cached work when \code{params_new}'s omega is unchanged.}
+the next call to reuse cached work when \code{params_new}'s omega is unchanged. When \code{NULL}, the cache
+\code{simStepRes} already carries from its own simulation step is used instead of starting cold.}
 }
 \value{
 A list with \code{f_est} (the contrast value) and \code{daughter_kernel_cache} (to be passed back

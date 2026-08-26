@@ -23,7 +23,9 @@
 #' @param ylims Simulation window y limits
 #' @param wq Weights for contrast function
 #' @param eta Trust region parameter
-#' @param simulation_threshold simulation_threshold
+#' @param simulation_threshold How far the iterate may drift, in log-parameter distance,
+#' from the parameters the current ensemble was simulated at before a fresh ensemble is
+#' simulated.
 #' @param r Hyperparameter for SR1 update
 #' @param printProgress Set to TRUE to get updates on progress while running
 #'
@@ -42,25 +44,14 @@ minimum_contrast_sr1 <- function(params, par_free_index, epsilon, delta_hat,
   if(printProgress){
     initTime <- Sys.time()
     print("Starting initial step")
-
-    print("Simulating pattern: ")
-    patternSim <- mcprogress::pmclapply(X = rep(exp(params[1]), nSims), FUN = rThomas_matern_thinned,
-                            scale = exp(params[2]), mu = exp(params[3]),
-                            repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
-    print("Estimating baselines: ")
-    K_lambda_baseline <- mcprogress::pmclapply(patternSim, estimate_K_lambda_baseline, r_vec = K_hat$r)
-  } else {
-    patternSim <- parallel::mclapply(X = rep(exp(params[1]), nSims), FUN = rThomas_matern_thinned,
-                                     scale = exp(params[2]), mu = exp(params[3]),
-                                     repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
-    K_lambda_baseline <- parallel::mclapply(patternSim, estimate_K_lambda_baseline, r_vec = K_hat$r)
   }
+  simStepRes <- simulation_step(nSims = nSims, params = params, repRange = repRange,
+                                xlims = xlims, ylims = ylims, K_hat = K_hat,
+                                printProgress = printProgress)
 
   params_sim <- params
-  rho_baseline <- sapply(patternSim, estimate_rho_baseline)
 
-  evals <- evaluate_contrast_and_gradient(patternSim = patternSim, params = params, params_0 = params,
-                                         rho_baseline = rho_baseline, K_lambda_baseline = K_lambda_baseline,
+  evals <- evaluate_contrast_and_gradient(simStepRes = simStepRes, params = params, params_0 = params,
                                          rho_hat = rho_hat, K_hat = K_hat,
                                          par_free_index = par_free_index, epsilon = epsilon,
                                          normalized = normalized, wq = wq)
@@ -68,10 +59,8 @@ minimum_contrast_sr1 <- function(params, par_free_index, epsilon, delta_hat,
   f_vals[1] <- evals$f_val
   gn_vals[1, ] <- evals$gn_val[par_free_index]
 
-  H <- contrast_hessian_importance_sampling(params = params, epsilon = epsilon,
-                                            par_free_index = par_free_index, patternSim = patternSim,
-                                            rho_baseline = rho_baseline,
-                                            K_lambda_baseline = K_lambda_baseline,
+  H <- contrast_hessian_importance_sampling(params = params, params_sim = params_sim, epsilon = epsilon,
+                                            par_free_index = par_free_index, simStepRes = simStepRes,
                                             normalized = normalized,
                                             rho_hat = rho_hat, K_hat = K_hat,
                                             wq = wq, f_val = f_vals[1])
@@ -83,8 +72,7 @@ minimum_contrast_sr1 <- function(params, par_free_index, epsilon, delta_hat,
 
   update_evaluation <- evaluate_improvement_SR1(f_old = f_vals[1], params_new = params_new, params_sim = params_sim,
                                             params_old = params, predicted_reduction = trust_region_step$predicted_red,
-                                            patternSim = patternSim, K_hat = K_hat, rho_hat = rho_hat, wq = wq,
-                                            rho_baseline = rho_baseline, K_lambda_baseline = K_lambda_baseline,
+                                            simStepRes = simStepRes, K_hat = K_hat, rho_hat = rho_hat, wq = wq,
                                             normalized = normalized, delta_hat = delta_hat, eta = eta)
 
   if(update_evaluation$updateIterate){
@@ -114,25 +102,15 @@ minimum_contrast_sr1 <- function(params, par_free_index, epsilon, delta_hat,
       if(printProgress){
         initTime <- Sys.time()
         print(paste("Simulating new pattern at step", nSteps, ": "))
-        patternSim <- mcprogress::pmclapply(X = rep(exp(params[1]), nSims), FUN = rThomas_matern_thinned,
-                                            scale = exp(params[2]), mu = exp(params[3]),
-                                            repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
-        print("Estimating baselines: ")
-        K_lambda_baseline <- mcprogress::pmclapply(patternSim, estimate_K_lambda_baseline, r_vec = K_hat$r)
-      } else {
-        patternSim <- parallel::mclapply(X = rep(exp(params[1]), nSims), FUN = rThomas_matern_thinned,
-                                         scale = exp(params[2]), mu = exp(params[3]),
-                                         repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
-        K_lambda_baseline <- parallel::mclapply(patternSim, estimate_K_lambda_baseline, r_vec = K_hat$r)
       }
-
-      rho_baseline <- sapply(patternSim, estimate_rho_baseline)
+      simStepRes <- simulation_step(nSims = nSims, params = params, repRange = repRange,
+                                    xlims = xlims, ylims = ylims, K_hat = K_hat,
+                                    printProgress = printProgress)
       params_sim <- params
     }
 
     if(update_evaluation$updateIterate){
-      evals <- evaluate_contrast_and_gradient(patternSim = patternSim, params = params, params_0 = params_sim,
-                                              rho_baseline = rho_baseline, K_lambda_baseline = K_lambda_baseline,
+      evals <- evaluate_contrast_and_gradient(simStepRes = simStepRes, params = params, params_0 = params_sim,
                                               rho_hat = rho_hat, K_hat = K_hat,
                                               par_free_index = par_free_index, epsilon = epsilon,
                                               normalized = normalized, wq = wq)
@@ -153,8 +131,7 @@ minimum_contrast_sr1 <- function(params, par_free_index, epsilon, delta_hat,
 
     update_evaluation <- evaluate_improvement_SR1(f_old = f_vals[nSteps], params_new = params_new, params_sim = params_sim,
                                               params_old = params, predicted_reduction = trust_region_step$predicted_red,
-                                              patternSim = patternSim, K_hat = K_hat, rho_hat = rho_hat, wq = wq,
-                                              rho_baseline = rho_baseline, K_lambda_baseline = K_lambda_baseline,
+                                              simStepRes = simStepRes, K_hat = K_hat, rho_hat = rho_hat, wq = wq,
                                               normalized = normalized, delta_hat = delta_hat, eta = eta)
 
     if(update_evaluation$updateIterate){
@@ -179,11 +156,11 @@ minimum_contrast_sr1 <- function(params, par_free_index, epsilon, delta_hat,
 #' @param f_old Value of function at evaluation location
 #' @param params_new Parameter values at which to approximate the partial derivative
 #' @param params_old Parameter values of the previous iteration
-#' @param params_sim Parameter values used to simulate  patternSim
+#' @param params_sim Parameter values used to simulate the ensemble in `simStepRes`
 #' @param predicted_reduction Step for derivative calculation
-#' @param patternSim simulated point pattern to use
-#' @param rho_baseline rho_baseline
-#' @param K_lambda_baseline K_lambda_baseline
+#' @param simStepRes Result from the simulation step, see \code{\link{simulation_step}}. It must be the ensemble
+#' simulated at `params_sim`, since that is the density the importance sampling weights
+#' are taken against.
 #' @param normalized Normalize IS weights?
 #' @param rho_hat Estimated intensity for data
 #' @param K_hat Estimated K-function for data
@@ -192,11 +169,10 @@ minimum_contrast_sr1 <- function(params, par_free_index, epsilon, delta_hat,
 #' @param eta Trust region parameter
 #'
 #' @export
-evaluate_improvement_SR1 <- function(f_old, params_new, params_old, params_sim, predicted_reduction, patternSim, K_hat, rho_hat, wq,
-                                 rho_baseline, K_lambda_baseline, normalized, delta_hat, eta){
-  f_new <- contrast_is(patternSim = patternSim, params_0 = params_sim, params_new = params_new,
-                       K_hat = K_hat, rho_hat = rho_hat, wq = wq, rho_baseline = rho_baseline,
-                       K_lambda_baseline = K_lambda_baseline, normalized = normalized)$f_est
+evaluate_improvement_SR1 <- function(f_old, params_new, params_old, params_sim, predicted_reduction, simStepRes,
+                                 K_hat, rho_hat, wq, normalized, delta_hat, eta){
+  f_new <- contrast_is(simStepRes = simStepRes, params_0 = params_sim, params_new = params_new,
+                       K_hat = K_hat, rho_hat = rho_hat, wq = wq, normalized = normalized)$f_est
   updateIterate <- ((f_old - f_new)/(predicted_reduction) > eta)
   if((f_old - f_new)/(predicted_reduction) > 0.75){
     if(sqrt(sum((params_new - params_old)^2)) > 0.8){
@@ -213,12 +189,11 @@ evaluate_improvement_SR1 <- function(f_old, params_new, params_old, params_sim, 
 #' Calculate partial derivative for the k'th parameter
 #'
 #' @param params Parameter values at which to aproximate the partial derivative
-#' @param params_sim Parameter values used in simulating patternSim
+#' @param params_sim Parameter values used to simulate the ensemble in `simStepRes`
 #' @param par_free_index Indices of parameters to estimate
 #' @param epsilon Step for derivative calculation
-#' @param patternSim simulated point pattern to use
-#' @param rho_baseline rho_baseline
-#' @param K_lambda_baseline K_lambda_baseline
+#' @param simStepRes Result from the simulation step, see \code{\link{simulation_step}}. It must be the ensemble
+#' simulated at `params_sim`.
 #' @param normalized Normalize IS weights?
 #' @param rho_hat Estimated intensity for data
 #' @param K_hat Estimated K-function for data
@@ -226,21 +201,18 @@ evaluate_improvement_SR1 <- function(f_old, params_new, params_old, params_sim, 
 #' @param f_val Value of function at evaluation location
 #'
 #' @export
-contrast_gradient_importance_sampling <- function(params, params_sim, par_free_index, epsilon, patternSim,
-                                                  rho_baseline, K_lambda_baseline, normalized,
-                                                  rho_hat, K_hat, wq, f_val){
+contrast_gradient_importance_sampling <- function(params, params_sim, par_free_index, epsilon, simStepRes,
+                                                  normalized, rho_hat, K_hat, wq, f_val){
   gn <- rep(0, length(params))
   for (i in 1:length(par_free_index)) {
     step_params <- params
     step_params[par_free_index[i]] <- params[par_free_index[i]] + epsilon
 
-    f_fwd <- contrast_is(patternSim = patternSim,
+    f_fwd <- contrast_is(simStepRes = simStepRes,
                          params_0 = params_sim,
                          params_new = step_params,
                          rho_hat = rho_hat,
                          K_hat = K_hat,
-                         rho_baseline = rho_baseline,
-                         K_lambda_baseline = K_lambda_baseline,
                          normalized = normalized,
                          wq = wq)$f_est
 
@@ -255,11 +227,11 @@ contrast_gradient_importance_sampling <- function(params, params_sim, par_free_i
 #' See equation 8.21 in Nocedal and Wright.
 #'
 #' @param params Parameter values at which to aproximate the partial derivative
+#' @param params_sim Parameter values used to simulate `simStepRes`
 #' @param par_free_index Indices of parameters to estimate
 #' @param epsilon Step for derivative calculation
-#' @param patternSim simulated point pattern to use
-#' @param rho_baseline rho_baseline
-#' @param K_lambda_baseline K_lambda_baseline
+#' @param simStepRes Result from the simulation step, see \code{\link{simulation_step}}. It must be the ensemble
+#' simulated at `params_sim`.
 #' @param normalized Normalize IS weights?
 #' @param rho_hat Estimated intensity for data
 #' @param K_hat Estimated K-function for data
@@ -267,44 +239,37 @@ contrast_gradient_importance_sampling <- function(params, params_sim, par_free_i
 #' @param f_val Value of function at evaluation location
 #'
 #' @export
-contrast_hessian_importance_sampling <- function(params, par_free_index, epsilon, patternSim,
-                                                 rho_baseline, K_lambda_baseline, normalized,
-                                                 rho_hat, K_hat, wq, f_val){
+contrast_hessian_importance_sampling <- function(params, params_sim, par_free_index, epsilon, simStepRes,
+                                                 normalized, rho_hat, K_hat, wq, f_val){
   H <- matrix(data = 1, nrow = length(par_free_index), ncol = length(par_free_index))
   for (i in 1:length(par_free_index)) {
     for(j in 1:length(par_free_index)) {
       step_params <- params
       step_params[i] <- params[i] + epsilon
-      f_fwd_i <- contrast_is(patternSim = patternSim,
-                           params_0 = params,
+      f_fwd_i <- contrast_is(simStepRes = simStepRes,
+                           params_0 = params_sim,
                            params_new = step_params,
                            rho_hat = rho_hat,
                            K_hat = K_hat,
-                           rho_baseline = rho_baseline,
-                           K_lambda_baseline = K_lambda_baseline,
                            normalized = normalized,
                            wq = wq)$f_est
 
       step_params <- params
       step_params[j] <- params[j] + epsilon
-      f_fwd_j <- contrast_is(patternSim = patternSim,
-                             params_0 = params,
+      f_fwd_j <- contrast_is(simStepRes = simStepRes,
+                             params_0 = params_sim,
                              params_new = step_params,
                              rho_hat = rho_hat,
                              K_hat = K_hat,
-                             rho_baseline = rho_baseline,
-                             K_lambda_baseline = K_lambda_baseline,
                              normalized = normalized,
                              wq = wq)$f_est
 
       step_params[i] <- step_params[i] + epsilon
-      f_fwd_ij <- contrast_is(patternSim = patternSim,
-                             params_0 = params,
+      f_fwd_ij <- contrast_is(simStepRes = simStepRes,
+                             params_0 = params_sim,
                              params_new = step_params,
                              rho_hat = rho_hat,
                              K_hat = K_hat,
-                             rho_baseline = rho_baseline,
-                             K_lambda_baseline = K_lambda_baseline,
                              normalized = normalized,
                              wq = wq)$f_est
 
@@ -319,11 +284,9 @@ contrast_hessian_importance_sampling <- function(params, par_free_index, epsilon
 #' @description
 #' ...?
 #'
-#' @param patternSim Simulated pattern
+#' @param simStepRes Result from the simulation step, see \code{\link{simulation_step}}.
 #' @param params Parameters to use in estimation
 #' @param params_0 Parameters used for simulation
-#' @param rho_baseline rho_baseline
-#' @param K_lambda_baseline K_lambda_baseline
 #' @param rho_hat Estimated intensity for data
 #' @param K_hat Estimated K-function for data
 #' @param par_free_index Indices of parameters to estimate
@@ -332,24 +295,22 @@ contrast_hessian_importance_sampling <- function(params, par_free_index, epsilon
 #' @param wq Weights for contrast function
 #'
 #' @export
-evaluate_contrast_and_gradient <- function(patternSim, params, params_0, rho_baseline, K_lambda_baseline, rho_hat, K_hat,
+evaluate_contrast_and_gradient <- function(simStepRes, params, params_0, rho_hat, K_hat,
                                            par_free_index, epsilon, normalized, wq){
 
   if(is.null(params_0)){
-    rho_par <- mean(rho_baseline)
-    K_par <- K_importance_sampling(w_is = rep(1, length(rho_baseline)), patternSim = NULL,
-                                   K_lambda_baseline = K_lambda_baseline,
-                                   rho_baseline = rho_baseline)
+    rho_par <- mean(simStepRes$rho_baseline)
+    K_par <- K_importance_sampling(w_is = rep(1, length(simStepRes$rho_baseline)), patternSim = NULL,
+                                   K_lambda_baseline = simStepRes$K_lambda_baseline,
+                                   rho_baseline = simStepRes$rho_baseline)
     f_val <- contrast_function(rho_par = rho_par, rho_hat = rho_hat, K_par = K_par, K_hat = K_hat)
   } else {
-    f_val <- contrast_is(patternSim = patternSim, params_0 = params_0, params_new = params,
-                         K_hat = K_hat, rho_hat = rho_hat, wq = wq, rho_baseline = rho_baseline,
-                         K_lambda_baseline = K_lambda_baseline, normalized = normalized)$f_est
+    f_val <- contrast_is(simStepRes = simStepRes, params_0 = params_0, params_new = params,
+                         K_hat = K_hat, rho_hat = rho_hat, wq = wq, normalized = normalized)$f_est
   }
 
   gn_val <- contrast_gradient_importance_sampling(params = params, params_sim = params_0, par_free_index = par_free_index,
-                                                  epsilon = epsilon, patternSim = patternSim,
-                                                  rho_baseline = rho_baseline, K_lambda_baseline = K_lambda_baseline,
+                                                  epsilon = epsilon, simStepRes = simStepRes,
                                                   normalized = normalized,
                                                   rho_hat = rho_hat, K_hat = K_hat,
                                                   wq = wq, f_val = f_val)
