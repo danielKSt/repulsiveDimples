@@ -9,8 +9,8 @@ evaluate_improvement(
   f_new,
   x_new,
   x_old,
-  delta_hat,
-  delta_max,
+  delta,
+  deltaMax,
   eta,
   predicted_reduction
 )
@@ -24,9 +24,9 @@ evaluate_improvement(
 
 \item{x_old}{Old parameter values}
 
-\item{delta_hat}{Old trust region radius}
+\item{delta}{Old trust region radius}
 
-\item{delta_max}{Maximal trust region radius}
+\item{deltaMax}{Maximal trust region radius}
 
 \item{eta}{Trust region parameter}
 

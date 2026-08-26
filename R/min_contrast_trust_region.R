@@ -1,5 +1,3 @@
-
-
 #' Complete estimation procedure using importance sampling + simulation + minimum contrast
 #' @description
 #' Minimum contrast estimation using trust region approach with simulation based estimation
@@ -9,7 +7,7 @@
 #'
 #'
 #' @param params Initial guess for parameters to estimate
-#' @param par_free_index Indices of parameters to estimate
+#' @param parFreeIndex Indices of parameters to estimate
 #' @param repRange Repulsion range
 #' @param K_hat Estimated K-function for data
 #' @param rho_hat Estimated intensity for data
@@ -18,33 +16,285 @@
 #' @param xlims Simulation window x limits
 #' @param ylims Simulation window y limits
 #' @param nSims Number of simulations
-#' @param delta_hat trust radius
+#' @param deltaInit Initial trust radius
 #' @param eta Trust region parameter
-#' @param delta_max Greatest trust region radius allowed
-#' @param delta_min Convergence tolerance for trust region radius
+#' @param deltaMax Greatest trust region radius allowed
+#' @param deltaMin Convergence tolerance for trust region radius
 #' @param tol Convergence tolerance
 #' @param max.iter Maximum iterations
+#' @param max.iter.prefit How many iterations to do at most for the pre-fitting
 #' @param printProgress Set to TRUE to get updates on progress while running
 #'
 #' @export
-min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat, K_hat,
-                                      xlims, ylims, nSims, delta_hat, eta, delta_max, delta_min = 0.001,
-                                      wq = c(1000, 1/4), normalized = FALSE,
-                                      tol = 10^-8, max.iter = 10000, printProgress = FALSE){
+min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
+                                      xlims, ylims, nSims, deltaInit, eta, deltaMax, deltaMin = 0.0001,
+                                      wq = c(1000, 1/4), normalized = FALSE, countPrefitLoops = 2, max.iter.prefit = 0,
+                                      tol = 10^-8, max.iter = 1000, printProgress = FALSE){
+  # TODO: Right now there are multiple while loops where the iteration scheme is ran. These are essentially the same, but with changed parFreeIndex, and wq. Could maybe clean code by making a seperate loop function.
+  # Prefit loop: ----
+  prefitsCompleted <- 0
+  prefitResults <- vector(mode = "list", length = countPrefitLoops)
+  while(prefitsCompleted < countPrefitLoops){
+    # Pure K-function prefit initialization: ----
+    if(printProgress){print("Starting prefitting with only K-function:")}
+    tempSteps <- 1
+    tempParFreeIndex <- intersect(parFreeIndex, c(1, 2))
+    x_sequence_prefit_K <- matrix(data = NA, nrow = max.iter.prefit, ncol = length(tempParFreeIndex))
+    x_sequence_prefit_K[1, ] <- params[tempParFreeIndex]
+    f_vals_prefit_K <- rep(0, max.iter.prefit)
+    update_evaluations_prefit_K <- vector(mode = "list", length = max.iter.prefit)
+
+    simStepRes <- simulation_step(nSims = nSims, params = params, repRange = repRange,
+                                  xlims = xlims, ylims = ylims, K_hat = K_hat,
+                                  printProgress = printProgress)
+    daughter_kernel_cache <- simStepRes$daughter_kernel_cache
+    xSim <- params[tempParFreeIndex]
+    trust_function <- function(x_new){
+      params_new <- params
+      params_new[tempParFreeIndex] <- x_new
+      res <- contrast_is(simStepRes = simStepRes, params_0 = params,
+                         params_new = params_new, rho_hat = rho_hat, K_hat = K_hat,
+                         wq = c(0, wq[2]), normalized = normalized, parallel_IS_weights = TRUE,
+                         daughter_kernel_cache = daughter_kernel_cache)
+      daughter_kernel_cache <<- res$daughter_kernel_cache
+      return(res$f_est)
+    }
+
+    f_vals_prefit_K[1] <- trust_function(xSim)
+    delta <- deltaInit
+    converged <- FALSE
+
+    # Pure K-function prefit optimization loop: ----
+    while((tempSteps < max.iter.prefit) && !converged){
+      if(printProgress){
+        print(paste("Starting pure K-function prefit iteration number: ", tempSteps))
+      }
+      res <- trust_step(x_0 = xSim, delta = delta, trust_function = trust_function)
+      params_star <- params
+      params_star[tempParFreeIndex] <- res$x_star
+
+      simStepRes_star <- simulation_step(nSims = nSims, params = params_star, repRange = repRange,
+                                         xlims = xlims, ylims = ylims, K_hat = K_hat,
+                                         printProgress = printProgress)
+      f_star <- contrast_is(simStepRes = simStepRes_star, params_0 = params_star,
+                            params_new = params_star, rho_hat = rho_hat, K_hat = K_hat,
+                            wq = c(0, wq[2]), normalized = normalized, parallel_IS_weights = TRUE)$f_est
+
+      update_eval <- evaluate_improvement(f_old = f_vals_prefit_K[tempSteps], f_new = f_star,
+                                          x_new = res$x_star, x_old = x_sequence_prefit_K[tempSteps, ],
+                                          delta = delta, deltaMax = deltaMax, eta = eta,
+                                          predicted_reduction = f_vals_prefit_K[tempSteps] - res$f_pred)
+      update_evaluations_prefit_K[[tempSteps]] <- list(res = res, update_eval = update_eval)
+
+      converged_in_trust_step <- (sum(abs(res$x_star - xSim)) < tol)
+
+      x_sequence_prefit_K[tempSteps + 1, ] <- update_eval$x
+      params[tempParFreeIndex] <- update_eval$x
+      delta <- update_eval$newDelta
+      f_vals_prefit_K[tempSteps + 1] <- update_eval$f_val
+      if(update_eval$updated){
+        xSim <- update_eval$x
+        simStepRes <- simStepRes_star
+        daughter_kernel_cache <- simStepRes_star$daughter_kernel_cache
+
+        trust_function <- function(x_new){
+          params_new <- params
+          params_new[tempParFreeIndex] <- x_new
+          res <- contrast_is(simStepRes = simStepRes, params_0 = params,
+                             params_new = params_new, rho_hat = rho_hat, K_hat = K_hat,
+                             wq = c(0, wq[2]), normalized = normalized, parallel_IS_weights = TRUE,
+                             daughter_kernel_cache = daughter_kernel_cache)
+          daughter_kernel_cache <<- res$daughter_kernel_cache
+          return(res$f_est)
+        }
+      }
+      change_after_step <- sum((x_sequence_prefit_K[tempSteps + 1, ] - x_sequence_prefit_K[tempSteps, ])^2)
+      converged <- ((change_after_step < tol) && converged_in_trust_step || (delta < deltaMin))
+      tempSteps <- tempSteps + 1
+    }
+    prefitResults_K <- list(x_seq = x_sequence_prefit_K[1:tempSteps, ],
+                            f_vals = f_vals_prefit_K[1:tempSteps],
+                            update_evals = update_evaluations_prefit_K[1:tempSteps])
+    # Pure mu prefit initialization: ----
+    if(printProgress){print("Starting prefitting with only mu:")}
+    tempSteps <- 1
+    tempParFreeIndex <- c(3)
+    x_sequence_prefit_mu <- matrix(data = NA, nrow = max.iter.prefit, ncol = length(tempParFreeIndex))
+    x_sequence_prefit_mu[1, ] <- params[tempParFreeIndex]
+    f_vals_prefit_mu <- rep(0, max.iter.prefit)
+    update_evaluations_prefit_mu <- vector(mode = "list", length = max.iter.prefit)
+
+    simStepRes <- simulation_step(nSims = nSims, params = params, repRange = repRange,
+                                  xlims = xlims, ylims = ylims, K_hat = K_hat,
+                                  printProgress = printProgress)
+    daughter_kernel_cache <- simStepRes$daughter_kernel_cache
+    xSim <- params[tempParFreeIndex]
+    trust_function <- function(x_new){
+      params_new <- params
+      params_new[tempParFreeIndex] <- x_new
+      res <- contrast_is(simStepRes = simStepRes, params_0 = params,
+                         params_new = params_new, rho_hat = rho_hat, K_hat = K_hat,
+                         wq = wq, normalized = normalized, parallel_IS_weights = TRUE,
+                         daughter_kernel_cache = daughter_kernel_cache)
+      daughter_kernel_cache <<- res$daughter_kernel_cache
+      return(res$f_est)
+    }
+
+    f_vals_prefit_mu[1] <- trust_function(xSim)
+    delta <- deltaInit
+    converged <- FALSE
+
+    # Pure mu prefit optimization loop: ----
+    while((tempSteps < max.iter.prefit) && !converged){
+      if(printProgress){
+        print(paste("Starting pure mu prefitting iteration number: ", tempSteps))
+      }
+      res <- trust_step(x_0 = xSim, delta = delta, trust_function = trust_function)
+      params_star <- params
+      params_star[tempParFreeIndex] <- res$x_star
+
+      simStepRes_star <- simulation_step(nSims = nSims, params = params_star, repRange = repRange,
+                                         xlims = xlims, ylims = ylims, K_hat = K_hat,
+                                         printProgress = printProgress)
+      f_star <- contrast_is(simStepRes = simStepRes_star, params_0 = params_star,
+                            params_new = params_star, rho_hat = rho_hat, K_hat = K_hat,
+                            wq = wq, normalized = normalized, parallel_IS_weights = TRUE)$f_est
+
+      update_eval <- evaluate_improvement(f_old = f_vals_prefit_mu[tempSteps], f_new = f_star,
+                                          x_new = res$x_star, x_old = x_sequence_prefit_mu[tempSteps, ],
+                                          delta = delta, deltaMax = deltaMax, eta = eta,
+                                          predicted_reduction = f_vals_prefit_mu[tempSteps] - res$f_pred)
+      update_evaluations_prefit_mu[[tempSteps]] <- list(res = res, update_eval = update_eval)
+
+      converged_in_trust_step <- (sum(abs(res$x_star - xSim)) < tol)
+
+      x_sequence_prefit_mu[tempSteps + 1, ] <- update_eval$x
+      params[tempParFreeIndex] <- update_eval$x
+      delta <- update_eval$newDelta
+      f_vals_prefit_mu[tempSteps + 1] <- update_eval$f_val
+      if(update_eval$updated){
+        xSim <- update_eval$x
+        simStepRes <- simStepRes_star
+        daughter_kernel_cache <- simStepRes_star$daughter_kernel_cache
+
+        trust_function <- function(x_new){
+          params_new <- params
+          params_new[tempParFreeIndex] <- x_new
+          res <- contrast_is(simStepRes = simStepRes, params_0 = params,
+                             params_new = params_new, rho_hat = rho_hat, K_hat = K_hat,
+                             wq = wq, normalized = normalized, parallel_IS_weights = TRUE,
+                             daughter_kernel_cache = daughter_kernel_cache)
+          daughter_kernel_cache <<- res$daughter_kernel_cache
+          return(res$f_est)
+        }
+      }
+      change_after_step <- sum((x_sequence_prefit_mu[tempSteps + 1, ] - x_sequence_prefit_mu[tempSteps, ])^2)
+      converged <- ((change_after_step < tol) && converged_in_trust_step || (delta < deltaMin))
+      tempSteps <- tempSteps + 1
+    }
+    prefitResults_mu <- list(x_seq = x_sequence_prefit_mu[1:tempSteps, ],
+                            f_vals = f_vals_prefit_mu[1:tempSteps],
+                            update_evals = update_evaluations_prefit_mu[1:tempSteps])
+
+    prefitResults[[prefitsCompleted + 1]] <- list(prefitResults_mu, prefitResults_K)
+    prefitsCompleted <- prefitsCompleted + 1
+  }
+
   # Initialize output: ----
   nSteps <- 1
-  x_sequence <- matrix(data = NA, nrow = max.iter, ncol = length(par_free_index))
-  x_sequence[1, ] <- params[par_free_index]
+  x_sequence <- matrix(data = NA, nrow = max.iter, ncol = length(parFreeIndex))
+  x_sequence[1, ] <- params[parFreeIndex]
   f_vals <- rep(0, max.iter)
 
-  if(printProgress){
-    initTime <- Sys.time()
-    print("Starting initial step")
+  simStepRes <- simulation_step(nSims = nSims, params = params, repRange = repRange,
+                                xlims = xlims, ylims = ylims, K_hat = K_hat,
+                                printProgress = printProgress)
 
+  daughter_kernel_cache <- simStepRes$daughter_kernel_cache
+
+  f_vals[1] <- trust_function(xSim)
+  delta <- deltaInit
+  converged <- FALSE
+
+  xSim <- params[parFreeIndex]
+  trust_function <- function(x_new){
+    params_new <- params
+    params_new[parFreeIndex] <- x_new
+    res <- contrast_is(simStepRes = simStepRes, params_0 = params,
+                       params_new = params_new, rho_hat = rho_hat, K_hat = K_hat,
+                       wq = wq, normalized = normalized, parallel_IS_weights = TRUE,
+                       daughter_kernel_cache = daughter_kernel_cache)
+    daughter_kernel_cache <<- res$daughter_kernel_cache
+    return(res$f_est)
+  }
+
+  delta <- deltaInit
+  converged <- FALSE
+
+  # Optimization loop: ----
+  while((nSteps < max.iter) && !converged){
+    if(printProgress){
+      print(paste("Starting iteration number: ", nSteps))
+    }
+    res <- trust_step(x_0 = xSim, delta = delta, trust_function = trust_function)
+    params_star <- params
+    params_star[parFreeIndex] <- res$x_star
+
+    simStepRes_star <- simulation_step(nSims = nSims, params = params_star, repRange = repRange,
+                                  xlims = xlims, ylims = ylims, K_hat = K_hat,
+                                  printProgress = printProgress)
+    f_star <- contrast_is(simStepRes = simStepRes_star, params_0 = params_star,
+                          params_new = params_star, rho_hat = rho_hat, K_hat = K_hat,
+                          wq = wq, normalized = normalized, parallel_IS_weights = TRUE)$f_est
+
+    update_eval <- evaluate_improvement(f_old = f_vals[nSteps], f_new = f_star,
+                                        x_new = res$x_star, x_old = x_sequence[nSteps, ],
+                                        delta = delta, deltaMax = deltaMax, eta = eta,
+                                        predicted_reduction = f_vals[nSteps] - res$f_pred)
+
+    converged_in_trust_step <- (sum(abs(res$x_star - xSim)) < tol)
+
+    x_sequence[nSteps + 1, ] <- update_eval$x
+    params[parFreeIndex] <- update_eval$x
+    delta <- update_eval$newDelta
+    f_vals[nSteps + 1] <- update_eval$f_val
+    if(update_eval$updated){
+      xSim <- update_eval$x
+      simStepRes <- simStepRes_star
+      daughter_kernel_cache <- simStepRes_star$daughter_kernel_cache
+
+      trust_function <- function(x_new){
+        params_new <- params
+        params_new[parFreeIndex] <- x_new
+        res <- contrast_is(simStepRes = simStepRes, params_0 = params,
+                           params_new = params_new, rho_hat = rho_hat, K_hat = K_hat,
+                           wq = wq, normalized = normalized, parallel_IS_weights = TRUE,
+                           daughter_kernel_cache = daughter_kernel_cache)
+        daughter_kernel_cache <<- res$daughter_kernel_cache
+        return(res$f_est)
+      }
+    }
+    change_after_step <- sum((x_sequence[nSteps + 1, ] - x_sequence[nSteps, ])^2)
+    converged <- ((change_after_step < tol) && converged_in_trust_step || (delta < deltaMin))
+    nSteps <- nSteps + 1
+  }
+  return(list(params = x_sequence[1:nSteps, ],
+              f_vals = f_vals[1:nSteps]))
+}
+
+#' Simulation step in trust region optimization
+#' @description
+#' This function performs the simulation step in our optimizer.
+#'
+#' @param nSims Number of simulations
+#' @param params params
+#' @export
+simulation_step <- function(nSims, params, repRange, xlims, ylims, K_hat, printProgress = FALSE){
+  if(printProgress){
     print("Simulating pattern: ")
     patternSim <- mcprogress::pmclapply(X = rep(exp(params[1]), nSims), FUN = rThomas_matern_thinned,
-                            scale = exp(params[2]), mu = exp(params[3]),
-                            repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
+                                        scale = exp(params[2]), mu = exp(params[3]),
+                                        repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
     print("Calculating densities for the simulation parameter:")
     baseline <- baseline_densities(patternSim = patternSim, params = params, printProgress = TRUE)
     print("Estimating baselines: ")
@@ -59,108 +309,13 @@ min_contrast_trust_region <- function(params, par_free_index, repRange, rho_hat,
 
   log_f_kappa_0 <- baseline$log_f_kappa_0
   log_fCond_theta_0 <- baseline$log_fCond_theta_0
-  # Seeded rather than NULL: the kernel sums behind log_fCond_theta_0 are exactly
-  # the ones the first evaluations need, so they are handed straight to the cache.
   daughter_kernel_cache <- baseline$daughter_kernel_cache
 
   rho_baseline <- sapply(patternSim, estimate_rho_baseline)
 
-  x_sim <- params[par_free_index]
-  trust_function <- function(x_new){
-    params_new <- params
-    params_new[par_free_index] <- x_new
-    res <- contrast_is(patternSim = patternSim, params_0 = params,
-                       params_new = params_new, rho_hat = rho_hat, K_hat = K_hat,
-                       rho_baseline = rho_baseline, K_lambda_baseline = K_lambda_baseline,
-                       wq = wq, normalized = normalized, log_f_kappa_0 = log_f_kappa_0,
-                       log_fCond_theta_0 = log_fCond_theta_0, parallel_IS_weights = TRUE,
-                       daughter_kernel_cache = daughter_kernel_cache)
-    daughter_kernel_cache <<- res$daughter_kernel_cache
-    return(res$f_est)
-  }
-
-  f_vals[1] <- trust_function(x_sim)
-  converged <- FALSE
-
-  # Iteration loop ----
-  while((nSteps < max.iter) && !converged){
-
-    if(printProgress){
-      print(paste("Starting iteration number: ", nSteps))
-      iter_start_time <- Sys.time()
-    }
-    res <- trust_step(x_0 = x_sim, delta_hat = delta_hat, trust_function = trust_function)
-    params_star <- params
-    params_star[par_free_index] <- res$x_star
-    if(printProgress){
-      iter_trust_step_time <- Sys.time()
-      print(paste("Time on trust step: ", iter_trust_step_time - iter_start_time))
-      patternSim_star <- mcprogress::pmclapply(X = rep(exp(params_star[1]), nSims), FUN = rThomas_matern_thinned,
-                                               scale = exp(params_star[2]), mu = exp(params_star[3]),
-                                               repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
-
-      print("Calculating densities for the simulation parameter:")
-      baseline_star <- baseline_densities(patternSim = patternSim_star, params = params_star,
-                                          printProgress = TRUE)
-
-      print("Estimating baselines: ")
-      K_lambda_baseline_star <- mcprogress::pmclapply(patternSim_star, estimate_K_lambda_baseline, r_vec = K_hat$r)
-    } else {
-      patternSim_star <- parallel::mclapply(X = rep(exp(params_star[1]), nSims), FUN = rThomas_matern_thinned,
-                                       scale = exp(params_star[2]), mu = exp(params_star[3]),
-                                       repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
-      K_lambda_baseline_star <- parallel::mclapply(patternSim_star, estimate_K_lambda_baseline, r_vec = K_hat$r)
-      baseline_star <- baseline_densities(patternSim = patternSim_star, params = params_star,
-                                          printProgress = FALSE)
-    }
-    log_f_kappa_0_star <- baseline_star$log_f_kappa_0
-    log_fCond_theta_0_star <- baseline_star$log_fCond_theta_0
-    rho_baseline_star <- sapply(patternSim_star, estimate_rho_baseline)
-
-    f_star <- contrast_is(patternSim = patternSim_star, params_0 = params_star,
-                          params_new = params_star, rho_hat = rho_hat, K_hat = K_hat,
-                          rho_baseline = rho_baseline_star, K_lambda_baseline = K_lambda_baseline_star,
-                          wq = wq, normalized = normalized, log_f_kappa_0 = log_f_kappa_0_star,
-                          log_fCond_theta_0 = log_fCond_theta_0_star, parallel_IS_weights = TRUE,
-                          daughter_kernel_cache = baseline_star$daughter_kernel_cache)$f_est
-
-    update_eval <- evaluate_improvement(f_old = f_vals[nSteps], f_new = f_star,
-                                        x_new = res$x_star, x_old = x_sequence[nSteps, ],
-                                        delta_hat = delta_hat, delta_max = delta_max, eta = eta,
-                                        predicted_reduction = f_vals[nSteps] - res$f_pred)
-
-    x_sequence[nSteps + 1, ] <- update_eval$x
-    params[par_free_index] <- update_eval$x
-    delta_hat <- update_eval$newDelta
-    f_vals[nSteps + 1] <- update_eval$f_val
-    if(update_eval$updated){
-      patternSim <- patternSim_star
-      x_sim <- update_eval$x
-      log_f_kappa_0 <- log_f_kappa_0_star
-      log_fCond_theta_0 <- log_fCond_theta_0_star
-      K_lambda_baseline <- K_lambda_baseline_star
-      rho_baseline <- rho_baseline_star
-      daughter_kernel_cache <- baseline_star$daughter_kernel_cache
-
-      trust_function <- function(x_new){
-        params_new <- params
-        params_new[par_free_index] <- x_new
-        res <- contrast_is(patternSim = patternSim, params_0 = params,
-                           params_new = params_new, rho_hat = rho_hat, K_hat = K_hat,
-                           rho_baseline = rho_baseline, K_lambda_baseline = K_lambda_baseline,
-                           wq = wq, normalized = normalized, log_f_kappa_0 = log_f_kappa_0,
-                           log_fCond_theta_0 = log_fCond_theta_0, parallel_IS_weights = TRUE,
-                           daughter_kernel_cache = daughter_kernel_cache)
-        daughter_kernel_cache <<- res$daughter_kernel_cache
-        return(res$f_est)
-      }
-    }
-    change_after_step <- sum((x_sequence[nSteps + 1, ] - x_sequence[nSteps, ])^2)
-    converged <- ((change_after_step < tol) && (sum(abs(res$x_star - x_sim)) < tol) && (delta_hat < delta_min))
-    nSteps <- nSteps + 1
-  }
-  return(list(params = x_sequence[1:nSteps, ],
-              f_vals = f_vals[1:nSteps]))
+  return(list(patternSim = patternSim, rho_baseline = rho_baseline, K_lambda_baseline = K_lambda_baseline,
+              log_f_kappa_0 = log_f_kappa_0, log_fCond_theta_0 = log_fCond_theta_0,
+              daughter_kernel_cache = daughter_kernel_cache))
 }
 
 #' Baseline densities for a freshly simulated ensemble
@@ -210,121 +365,6 @@ baseline_densities <- function(patternSim, params, printProgress = FALSE){
               daughter_kernel_cache = list(omega = omega_0, kernel_sums = kernel_sums_0)))
 }
 
-#' Do one iteration within trust region
-#' @description
-#' Iterate from params_sim using importance sampling on the realizations patternSim, simulated from params_sim.
-#' The iteration is restricted to the ball centered on the parameters used for simulation,
-#' with radius equal to the trust region radius.
-#'
-#' @param x_0 Parameter values used to simulate patternSim
-#' @param delta_hat Trust region radius
-#' @param trust_function Trust function
-#'
-#' @export
-trust_step <- function(x_0, delta_hat, trust_function){
-  n <- length(x_0)
-  if(n == 1){
-    x_k <- trust_line_steps(p_k = c(1), x_k = x_0, trust_function = trust_function,
-                            subsection_count = 13, delta_hat = delta_hat, x_0 = x_0)
-    return(list(x_star = x_k,
-                f_pred = trust_function(x_k)))
-  }
-  p <- matrix(data = 0, nrow = n, ncol = n)
-  diag(p) <- 1
-  k <- 1
-  x_k <- trust_line_steps(x_k = x_0, p_k = p[, 1], x_0 = x_0, delta_hat = delta_hat, trust_function = trust_function)
-  hit_boundary <- (sqrt(sum(abs(x_k-x_0)^2)) > 0.99*delta_hat)
-  rotated <- FALSE
-  while(!hit_boundary && k < 2*n){
-    z_j <- matrix(data = 0, nrow = n, ncol = n + 1)
-    z_j[, 1] <- x_k
-    for(j in 1:n){
-      z_j[, j+1] <- trust_line_steps(p_k = p[, j], x_k = z_j[, j], x_0 = x_0,
-                                     delta_hat = delta_hat, trust_function = trust_function)
-    }
-    for(j in 1:(n-1)){
-      p[, j] <- p[, j+1]
-    }
-    p[, n] <- z_j[, n + 1] - z_j[, 1]
-    if(det(p)==0){
-      if(rotated){
-        break
-      }
-      p <- matrix(data = 0, nrow = n, ncol = n)
-      diag(p) <- 1
-      p[2, 1] <- -1
-      p[1, 2] <- 1
-      rotated <- TRUE
-    }
-    x_k <- trust_line_steps(x_k = z_j[, n + 1], p_k = p[, n], x_0 = x_0,
-                            delta_hat = delta_hat, trust_function = trust_function)
-    k <- k + 1
-    hit_boundary <- (sqrt(sum(abs(x_k-x_0)^2)) > 0.99*delta_hat)
-  }
-
-  return(list(x_star = x_k,
-              f_pred = trust_function(x_k)))
-}
-
-#' Line minimization using interpolation with maximum reach
-#' @description
-#' Line optimization for the trust steps
-#' @param p_k Search direction
-#' @param x_k Search starting point
-#' @param x_0 Center of trust region
-#' @param delta_hat Radius of trust region
-#' @param subsection_count Number of bisections
-#' @param trust_function Trust function
-#' @param iterations How many times to subdivide the line
-#'
-#' @export
-trust_line_steps <- function(p_k, x_k, x_0, delta_hat, trust_function, subsection_count = 11, iterations = 4){
-  alpha_range <- find_alpha_range(x_k, x_0, p_k, delta_hat)
-  alpha_k <- seq(from = alpha_range[1], to = alpha_range[2], length.out = subsection_count)
-  z_k <- matrix(data = NA, nrow = length(x_k), ncol = subsection_count)
-  for(i in 1:length(x_k)){
-    z_k[i, ] <- x_k[i] + p_k[i] * alpha_k
-  }
-  f_vals <- apply(X = z_k, MARGIN = 2, FUN = trust_function)
-  j_opt <- which.min(f_vals)
-  for(j in 1:iterations){
-    if(j_opt < 3){
-      j_opt <- 3
-    } else if(j_opt > subsection_count - 2){
-      j_opt <- subsection_count - 2
-    }
-    alpha_k <- seq(from = alpha_k[j_opt-2], to = alpha_k[j_opt+2], length.out = subsection_count)
-    for(i in 1:length(x_k)){
-      z_k[i, ] <- x_k[i] + p_k[i] * alpha_k
-    }
-    f_vals <- apply(X = z_k, MARGIN = 2, FUN = trust_function)
-    j_opt <- which.min(f_vals)
-  }
-  return(z_k[ ,j_opt])
-}
-
-#' Function to determine allowable range for alpha in line search
-#' @description
-#' We want to do a line search satisfying ||x_k+alpha*p_k - x_0||_2 <= delta_hat
-#'
-#' This function solves the simple quadratic equation needed to find the range of
-#' alpha values that satisfies thiat requirement.
-#'
-#' @param x_k Previous iterate, origin of line search
-#' @param x_0 Midpoint of trust region
-#' @param p_k Direction of line search
-#' @param delta_hat Radius of trust region
-#' @export
-find_alpha_range <- function(x_k, x_0, p_k, delta_hat){
-  a <- t(p_k)%*%p_k
-  b <- 2*t(p_k)%*%(x_k-x_0)
-  const <- t(x_k-x_0)%*%(x_k-x_0) - delta_hat
-  determ <- sqrt(b^2-4*a*const)
-  up_lim <- (determ - b)/(2*a)
-  low_lim <- (-1)*(determ + b)/(2*a)
-  return(c(min(c(low_lim, up_lim)), max(c(low_lim, up_lim))))
-}
-
 #' Evaluate if there is sufficient improvement
 #' @description
 #' evaluate improvement
@@ -333,19 +373,19 @@ find_alpha_range <- function(x_k, x_0, p_k, delta_hat){
 #' @param f_new Value of function at evaluation location
 #' @param x_new New parameter values
 #' @param x_old Old parameter values
-#' @param delta_hat Old trust region radius
-#' @param delta_max Maximal trust region radius
+#' @param delta Old trust region radius
+#' @param deltaMax Maximal trust region radius
 #' @param eta Trust region parameter
 #' @param predicted_reduction Reduction in objective with the model function
 #'
 #' @export
-evaluate_improvement <- function(f_old, f_new, x_new, x_old, delta_hat, delta_max, eta, predicted_reduction){
+evaluate_improvement <- function(f_old, f_new, x_new, x_old, delta, deltaMax, eta, predicted_reduction){
   if((f_old - f_new)/(predicted_reduction) > 0.75){
-    if(sqrt(sum((x_new - x_old)^2)) > 0.99*delta_hat){
-      delta_hat <- min(c(2*delta_hat, delta_max))
+    if(sqrt(sum((x_new - x_old)^2)) > 0.99*delta){
+      delta <- min(c(2*delta, deltaMax))
     }
   } else if((f_old - f_new)/(predicted_reduction) < 0.1){
-    delta_hat <- 0.5*delta_hat
+    delta <- 0.5*delta
   }
   if(((f_old - f_new)/predicted_reduction) > eta){
     x_res <- x_new
@@ -357,7 +397,10 @@ evaluate_improvement <- function(f_old, f_new, x_new, x_old, delta_hat, delta_ma
     updated <- FALSE
   }
 
-  return(list(x = x_res, newDelta = delta_hat,
+  if(!updated && delta > sqrt(sum((x_new - x_old)^2))){
+    delta <- min(c(0.8*sqrt(sum((x_new - x_old)^2)), delta))
+  }
+  return(list(x = x_res, newDelta = delta,
               f_val = f_res, updated = updated))
 }
 

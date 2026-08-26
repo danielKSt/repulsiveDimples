@@ -5,15 +5,11 @@
 \title{Calculate contrast function}
 \usage{
 contrast_is(
-  patternSim,
+  simStepRes,
   params_0,
   params_new,
   rho_hat,
   K_hat,
-  rho_baseline,
-  K_lambda_baseline,
-  log_f_kappa_0 = NULL,
-  log_fCond_theta_0 = NULL,
   normalized = FALSE,
   wq = c(1000, 1/4),
   parallel_IS_weights = TRUE,
@@ -21,7 +17,7 @@ contrast_is(
 )
 }
 \arguments{
-\item{patternSim}{Simulated pattern}
+\item{simStepRes}{Result from simulation step, see the 'simulation_step' function}
 
 \item{params_0}{Parameters used in simulation of the point pattern}
 
@@ -30,14 +26,6 @@ contrast_is(
 \item{rho_hat}{Estimated intensity for data}
 
 \item{K_hat}{Estimated K-function for data}
-
-\item{rho_baseline}{rho_baseline}
-
-\item{K_lambda_baseline}{K_lambda_baseline}
-
-\item{log_f_kappa_0}{Pre-computed density for parent process}
-
-\item{log_fCond_theta_0}{Pre-computed density for daughter process}
 
 \item{normalized}{Normalize IS weights?}
 

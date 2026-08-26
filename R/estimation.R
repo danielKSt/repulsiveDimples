@@ -125,6 +125,7 @@ pcf_est.unions <- function(points_input, bw = NULL, l, spacing, rMax, dr, timesc
 #'
 #' @export
 find_min_dist <- function(points_input, timescale = 1, l){
+  # TODO: Use closePairs to speed up
   res <- l
   snapshots <- seq(from = 1, to = length(points_input), by = ceiling(timescale))
   for (t in 1:length(snapshots)) {

@@ -6,27 +6,30 @@
 \usage{
 min_contrast_trust_region(
   params,
-  par_free_index,
+  parFreeIndex,
   repRange,
   rho_hat,
   K_hat,
   xlims,
   ylims,
   nSims,
-  delta_hat,
+  deltaInit,
   eta,
-  delta_max,
+  deltaMax,
+  deltaMin = 1e-04,
   wq = c(1000, 1/4),
   normalized = FALSE,
+  countPrefitLoops = 2,
+  max.iter.prefit = 0,
   tol = 10^-8,
-  max.iter = 10000,
+  max.iter = 1000,
   printProgress = FALSE
 )
 }
 \arguments{
 \item{params}{Initial guess for parameters to estimate}
 
-\item{par_free_index}{Indices of parameters to estimate}
+\item{parFreeIndex}{Indices of parameters to estimate}
 
 \item{repRange}{Repulsion range}
 
@@ -40,15 +43,19 @@ min_contrast_trust_region(
 
 \item{nSims}{Number of simulations}
 
-\item{delta_hat}{trust radius}
+\item{deltaInit}{Initial trust radius}
 
 \item{eta}{Trust region parameter}
 
-\item{delta_max}{Greatest trust region radius allowed}
+\item{deltaMax}{Greatest trust region radius allowed}
+
+\item{deltaMin}{Convergence tolerance for trust region radius}
 
 \item{wq}{Weights for contrast function}
 
 \item{normalized}{Normalize IS weights?}
+
+\item{max.iter.prefit}{How many iterations to do at most for the pre-fitting}
 
 \item{tol}{Convergence tolerance}
 

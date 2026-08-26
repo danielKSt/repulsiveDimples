@@ -26,6 +26,8 @@
 importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 = NULL, omega_0 = NULL,
                                         patternSim, log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL,
                                         parallel = FALSE, daughter_kernel_cache = NULL){
+  # TODO: Check if parameters are equal in the simulation parameters and target parameters, if they are, use only log_f_kappa_0 and log_fCond_theta_0
+
   # The parent log-density is O(1) per pattern given the enlarged-window area and
   # the parent count, and both of those are parameter-independent, so the two
   # vectors are extracted once and reused for kappa_0 as well as kappa. This is
