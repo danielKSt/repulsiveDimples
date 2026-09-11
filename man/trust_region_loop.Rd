@@ -19,6 +19,12 @@ trust_region_loop(
   deltaMin = 1e-04,
   wq = c(1000, 1/4),
   normalized = FALSE,
+  eta_trust = 0.6,
+  eta_converged = 0.99,
+  validate.converged = FALSE,
+  subsection_count = 11,
+  line_iterations = 4,
+  max.directions = 1,
   tol = 10^-8,
   max.iter = 1000,
   printProgress = FALSE,
@@ -54,6 +60,69 @@ start from. Entries outside \code{parFreeIndex} are held fixed throughout.}
 \item{wq}{Weights for contrast function.}
 
 \item{normalized}{Normalize IS weights?}
+
+\item{eta_trust}{Smallest effective sample size, as a fraction of \code{nSims}, an iterate
+proposed by \code{\link{trust_step}} is allowed to have. Iterates the importance
+sampling cannot support at that level are rejected inside the trust step rather than
+being proposed at all.}
+
+\item{eta_converged}{Effective sample size, as a fraction of \code{nSims}, at or above
+which the fit is taken to have converged: once the iterate \code{\link{trust_step}}
+proposes is still this well supported by the ensemble simulated at the current
+parameters, the importance sampling has not been stretched and there is nothing left
+to re-simulate for. Expected to be larger than \code{eta_trust}, and in practice close to 1.
+
+A high effective sample size at the proposed iterate says the importance sampling is
+still reliable there; it does not say the contrast has been minimised, and on study1
+those come apart. Sweeping this over 0.8/0.9/0.95/0.99/0.999 and scoring each fit's
+endpoint against a \emph{fresh} 400-pattern ensemble gives mean contrasts of 2.49, 1.85,
+1.27, 1.02 and 0.64 against 5.32 at the starting point: the more readily this fires,
+the worse the fit. Judge it that way and not on the returned \code{f_vals}, whose last entry
+at an ESS-converged step is the minimum of the importance sampling surface taken over
+the same ensemble that defines it, and so is optimistic by up to an order of magnitude
+(0.143 reported against 2.49 measured, at 0.8).}
+
+\item{validate.converged}{What to do with the iterate that triggers \code{eta_converged}.
+\code{FALSE} (the default) accepts it straight from the importance sampling surface and
+stops, never simulating there. \code{TRUE} puts it through the same fresh simulation and
+\code{\link{evaluate_improvement}} test as any other step, and only then stops, so the
+step can still be rejected.
+
+The two are worth comparing because they trade different errors. Not validating avoids
+feeding a second ensemble's sampling error into the decision, but leaves \code{f_vals}
+ending on \code{f_pred}, which is the smallest of several hundred evaluations taken over the
+ensemble that selected it and is optimistic by roughly an order of magnitude at small
+\code{nSims} -- and, measured on study1, does not get better as \code{nSims} grows, because the
+line search simply searches harder. Validating costs one simulation and one accept or
+reject, and puts the last entry of \code{f_vals} on the same footing as the rest of it.
+
+The same footing is not, however, an unbiased one. \code{evaluate_improvement} accepts a
+step only when the fresh estimate is low enough, so every entry in \code{f_vals} has passed
+a filter that favours a lucky ensemble. On study1 at \code{nSims = 100} the contrast at one
+fixed parameter vector varied from 0.12 to 6.01 over twelve independent ensembles, and
+every value the optimizer reported fell at or below the smallest of those twelve.
+Neither setting of this argument gives a trustworthy final number, and neither is meant
+to: \code{f_vals} is a diagnostic series for watching a fit progress, not a measure of how
+good the fit is. What the argument changes is which steps get taken. To judge a fit on
+real data, compare the pair correlation function implied by the fitted parameters
+against the empirical one, rather than reading anything into the contrast values here.
+A large spread in the contrast across repeat ensembles at the fitted parameters is
+worth checking separately: it means \code{nSims} is too small for the accept/reject decision
+itself to be meaningful.}
+
+\item{subsection_count}{Points per line search grid inside \code{\link{trust_step}},
+at least 5.}
+
+\item{line_iterations}{How many times each line search refines its grid.}
+
+\item{max.directions}{How many times \code{\link{trust_step}} may update its
+conjugate direction set; \code{NULL} restores the original \code{2*length(parFreeIndex) - 1}.
+The default of 1 trades a slightly cruder individual step for a much cheaper one,
+which over a whole fit is a win rather than a compromise: the loop simply takes more
+steps. It suits the pre-fitting blocks in particular, where cycling quickly between the
+K-function block and the \code{mu} block beats solving either one exactly. It has no effect
+on a block with a single free parameter, such as the \code{mu} block, since that is one line
+search with no direction set to update.}
 
 \item{tol}{Convergence tolerance.}
 

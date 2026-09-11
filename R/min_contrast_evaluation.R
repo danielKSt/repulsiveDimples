@@ -19,8 +19,8 @@
 #' the next call to reuse cached work when `params_new`'s omega is unchanged. When `NULL`, the cache
 #' `simStepRes` already carries from its own simulation step is used instead of starting cold.
 #'
-#' @return A list with `f_est` (the contrast value) and `daughter_kernel_cache` (to be passed back
-#' into the next call for reuse).
+#' @return A list with `f_est` (the contrast value), `daughter_kernel_cache` (to be passed back
+#' into the next call for reuse), and `ess` (The effective sample size).
 #'
 #' @export
 contrast_is <- function(simStepRes, params_0, params_new, rho_hat, K_hat,
@@ -45,12 +45,13 @@ contrast_is <- function(simStepRes, params_0, params_new, rho_hat, K_hat,
                                         parallel = parallel_IS_weights,
                                         daughter_kernel_cache = daughter_kernel_cache)
   w_is <- is_res$w_is
+  ess <- (sum(w_is)^2)/sum(w_is^2)
   rho_est <- rho_importance_sampling(w_is = w_is, rho_baseline = simStepRes$rho_baseline, normalized = normalized)
   K_est <- K_importance_sampling(w_is = w_is, K_lambda_baseline = simStepRes$K_lambda_baseline,
                                  rho_baseline = simStepRes$rho_baseline, normalized = normalized)
   f_est <- contrast_function(rho_hat = rho_hat, rho_par = rho_est,
                              K_hat = K_hat, K_par = K_est, wq = wq)
-  return(list(f_est = f_est, daughter_kernel_cache = is_res$daughter_kernel_cache))
+  return(list(f_est = f_est, daughter_kernel_cache = is_res$daughter_kernel_cache, ess = ess))
 }
 
 #' Calculate contrast function

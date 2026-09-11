@@ -10,6 +10,9 @@ trust_line_steps(
   x_0,
   delta,
   trust_function,
+  ess_bounds,
+  eta_trust,
+  nSims,
   subsection_count = 11,
   iterations = 4
 )
@@ -23,12 +26,35 @@ trust_line_steps(
 
 \item{delta}{Radius of trust region}
 
-\item{trust_function}{Trust function}
+\item{trust_function}{Trust function. Called on a parameter vector and expected to
+return a list with \code{f_est} and \code{ess}.}
 
-\item{subsection_count}{Number of bisections}
+\item{ess_bounds}{Per-parameter breakdown bounds to screen against and add to, from
+\code{\link{ess_bounds_init}}.}
 
-\item{iterations}{How many times to subdivide the line}
+\item{eta_trust}{Smallest \code{ess/nSims} an iterate is allowed to have, between 0 and 1.}
+
+\item{nSims}{Number of simulations the ensemble behind \code{trust_function} holds.}
+
+\item{subsection_count}{Number of points on the line search grid, at least 5.}
+
+\item{iterations}{How many times to re-grid around the current minimum. Each round
+brackets it two points out on either side, so the searched span shrinks by
+\code{4/(subsection_count - 1)}.}
+}
+\value{
+A list with \code{x} (the best point found on the line, or \code{x_k} if none passed the
+ESS requirement) and \code{ess_bounds} (the bounds with any breakdown found here added).
 }
 \description{
-Line optimization for the trust steps
+Line optimization for the trust steps, restricted to points where the importance
+sampling behind \code{trust_function} still has an effective sample size of at least
+\code{eta_trust*nSims}.
+
+Points failing that requirement are recorded in \code{ess_bounds} and are given no
+contrast value, so they can neither be returned nor bracketed for refinement, and
+every later point that the recorded bounds already rule out is skipped without
+being evaluated at all. \code{x_k} is assumed to satisfy the requirement itself -- it is
+either the centre of the trust region or the result of an earlier line search -- and
+is returned unchanged if the whole line is ruled out.
 }

@@ -39,8 +39,8 @@ the next call to reuse cached work when \code{params_new}'s omega is unchanged. 
 \code{simStepRes} already carries from its own simulation step is used instead of starting cold.}
 }
 \value{
-A list with \code{f_est} (the contrast value) and \code{daughter_kernel_cache} (to be passed back
-into the next call for reuse).
+A list with \code{f_est} (the contrast value), \code{daughter_kernel_cache} (to be passed back
+into the next call for reuse), and \code{ess} (The effective sample size).
 }
 \description{
 Take the estimated K-function and intensity,

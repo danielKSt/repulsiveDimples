@@ -4,17 +4,71 @@
 \alias{trust_step}
 \title{Do one iteration within trust region}
 \usage{
-trust_step(x_0, delta, trust_function)
+trust_step(
+  x_0,
+  delta,
+  trust_function,
+  eta_trust,
+  nSims,
+  subsection_count = 11,
+  line_iterations = 4,
+  max.directions = 1
+)
 }
 \arguments{
 \item{x_0}{Parameter values used to simulate patternSim}
 
 \item{delta}{Trust region radius}
 
-\item{trust_function}{Trust function}
+\item{trust_function}{Trust function. Called on a parameter vector and expected to
+return a list with \code{f_est} (the contrast estimate) and \code{ess} (the effective sample
+size of the importance sampling weights behind it).}
+
+\item{eta_trust}{Smallest \code{ess/nSims} an iterate is allowed to have, between 0 and 1.}
+
+\item{nSims}{Number of simulations the ensemble behind \code{trust_function} holds, i.e.
+the largest effective sample size attainable.}
+
+\item{subsection_count}{Points per line search grid, at least 5. Each refinement
+re-grids the four intervals around the current minimum, so the search narrows by
+\code{4/(subsection_count - 1)} per round -- 0.4 at the default 11, but only 0.8 at 6, and
+nothing at all at 5.}
+
+\item{line_iterations}{How many times each line search refines its grid, passed to
+\code{\link{trust_line_steps}} as \code{iterations}.}
+
+\item{max.directions}{How many times the conjugate direction set may be updated.
+\code{NULL} restores the original \code{2*length(x_0) - 1}. The default of 1 keeps only the
+first update: a step is then a sweep along the current directions plus one conjugate
+correction. That makes each step cruder but several times cheaper, and over a whole fit
+the outer loop compensates by taking more steps -- on study1 the saving was large and
+unambiguous while the difference in final contrast stayed inside the run-to-run spread,
+which is not the same as showing the two are equivalent. At 0 the step degenerates into
+a single line search along the first free parameter.}
+}
+\value{
+A list with \code{x_star} (the trust region minimiser), \code{f_pred} and \code{ess_star}
+(the contrast estimate and effective sample size there), and \code{ess_bounds} (the
+per-parameter breakdown bounds accumulated over this step).
 }
 \description{
 Iterate from params_sim using importance sampling on the realizations patternSim, simulated from params_sim.
 The iteration is restricted to the ball centered on the parameters used for simulation,
 with radius equal to the trust region radius.
+
+Every evaluation re-weights the one ensemble simulated at \code{x_0}, so it is only worth
+trusting while the importance sampling has not degenerated. Iterates are therefore
+additionally required to satisfy \code{ess/nSims > eta_trust}, and the parameter values at
+which that requirement was seen to break down are carried between the line searches
+(see \code{\link{ess_bounds_init}}) so that later ones can skip points already known
+to be too far out.
 }
+\section{Cost}{
+
+A step costs at most \code{(1 + max.directions*(n + 1)) * (line_iterations + 1) * subsection_count} calls to \code{trust_function} for \code{n} free parameters, before the ESS
+screening prunes any of them and before the boundary test ends the loop early. At the
+defaults with three free parameters that is 5 line searches of 55 points each; passing
+\code{max.directions = NULL} restores the former 25. \code{trust_step} dominates the wall time of
+a fit -- on study1 one \code{simulation_step} is 0.16 s against 41 s for a \code{max.directions = NULL} step -- so these three arguments are the levers on how long a fit takes.
+}
+
