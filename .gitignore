@@ -8,3 +8,6 @@ inst/doc
 
 # Rendered study reports - regenerable from the .Rmd plus the .RDa results
 simulation_studies/*.html
+
+# testthat writes these when a test file errors
+tests/testthat/_problems/
