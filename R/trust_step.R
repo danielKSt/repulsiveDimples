@@ -25,6 +25,13 @@
 #' nothing at all at 5.
 #' @param line_iterations How many times each line search refines its grid, passed to
 #' \code{\link{trust_line_steps}} as `iterations`.
+#' @param directions Direction set to start this step from, as an `n x n` matrix of
+#' columns, or `NULL` for the coordinate axes. Pass back the `directions` a previous step
+#' returned to continue accumulating conjugate directions across trust region iterations
+#' instead of restarting from the axes every time -- the accumulation is the mechanism
+#' behind Powell (1964), and restarting discards it. Restarting also makes every step open
+#' with a line search along free parameter 1, which biases the search toward that
+#' parameter. See \code{\link{trust_region_loop}}'s `carry.directions`.
 #' @param max.directions How many times the conjugate direction set may be updated.
 #' `NULL` restores the original `2*length(x_0) - 1`. The default of 1 keeps only the
 #' first update: a step is then a sweep along the current directions plus one conjugate
@@ -44,12 +51,14 @@
 #' NULL` step -- so these three arguments are the levers on how long a fit takes.
 #'
 #' @return A list with `x_star` (the trust region minimiser), `f_pred` and `ess_star`
-#' (the contrast estimate and effective sample size there), and `ess_bounds` (the
-#' per-parameter breakdown bounds accumulated over this step).
+#' (the contrast estimate and effective sample size there), `ess_bounds` (the
+#' per-parameter breakdown bounds accumulated over this step), and `directions` (the
+#' direction set as this step left it, to feed back in through `directions`).
 #'
 #' @export
 trust_step <- function(x_0, delta, trust_function, eta_trust, nSims,
-                       subsection_count = 11, line_iterations = 4, max.directions = 1){
+                       subsection_count = 11, line_iterations = 4, max.directions = 1,
+                       directions = NULL){
   n <- length(x_0)
   if(subsection_count < 5){
     stop("subsection_count must be at least 5, since each refinement brackets the grid minimum two points out on either side.")
@@ -73,9 +82,9 @@ trust_step <- function(x_0, delta, trust_function, eta_trust, nSims,
                                 iterations = line_iterations)
     x_k <- lineRes$x
     ess_bounds <- lineRes$ess_bounds
+    p <- matrix(data = 1, nrow = 1, ncol = 1)
   } else {
-    p <- matrix(data = 0, nrow = n, ncol = n)
-    diag(p) <- 1
+    p <- direction_set_init(directions, n)
     k <- 0
     lineRes <- trust_line_steps(x_k = x_0, p_k = p[, 1], x_0 = x_0, delta = delta,
                                 trust_function = trust_function, ess_bounds = ess_bounds,
@@ -101,7 +110,21 @@ trust_step <- function(x_0, delta, trust_function, eta_trust, nSims,
       for(j in 1:(n-1)){
         p[, j] <- p[, j+1]
       }
-      p[, n] <- z_j[, n + 1] - z_j[, 1]
+      # Stored as a unit vector. A line search is invariant to the length of its
+      # direction -- find_alpha_range rescales alpha to match -- so this moves no
+      # evaluated point, but it makes det(p) a scale-free measure of how close the set is
+      # to losing a dimension. That matters once the set is carried across iterations
+      # rather than rebuilt from the axes each time, since near-degeneracy accumulates.
+      v <- z_j[, n + 1] - z_j[, 1]
+      vNorm <- sqrt(sum(v^2))
+      p[, n] <- if(vNorm > 0) v/vNorm else v
+      # Exact test, as before. Note that normalising above changes what this catches: with
+      # an unnormalised direction a tiny displacement gives column entries around 1e-10,
+      # whose det underflows to exactly zero and fires the rotation fallback even though
+      # the directions are not actually dependent. Normalised, only genuine degeneracy
+      # trips it. So this differs from the pre-2026-09-14 package in that narrow case, and
+      # deliberately -- the old trigger was a floating point artefact. A carried set is
+      # additionally checked against a tolerance on the way in, by direction_set_init.
       if(det(p)==0){
         if(rotated){
           break
@@ -128,7 +151,31 @@ trust_step <- function(x_0, delta, trust_function, eta_trust, nSims,
   return(list(x_star = x_k,
               f_pred = starRes$f_est,
               ess_star = starRes$ess,
-              ess_bounds = ess_bounds))
+              ess_bounds = ess_bounds,
+              directions = p))
+}
+
+#' Direction set to open a trust step with
+#' @description
+#' Returns `directions` when it is a usable `n x n` set, and the coordinate axes
+#' otherwise. A carried set is rejected if it has the wrong shape (the number of free
+#' parameters changed), holds anything non-finite, or has gone singular, since a singular
+#' set has lost a search dimension and would never recover it on its own.
+#'
+#' @param directions Direction set from a previous step, or `NULL`.
+#' @param n Number of free parameters.
+#'
+#' @return An `n x n` matrix of direction columns.
+direction_set_init <- function(directions, n){
+  usable <- !is.null(directions) &&
+    is.matrix(directions) && all(dim(directions) == c(n, n)) &&
+    all(is.finite(directions)) && (abs(det(directions)) >= 1e-8)
+  if(usable){
+    return(directions)
+  }
+  p <- matrix(data = 0, nrow = n, ncol = n)
+  diag(p) <- 1
+  return(p)
 }
 
 #' Line minimization using interpolation with maximum reach

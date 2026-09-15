@@ -18,7 +18,7 @@ min_contrast_trust_region(
   deltaMax,
   deltaMin = 1e-04,
   wq = c(1000, 1/4),
-  normalized = FALSE,
+  normalized = TRUE,
   eta_trust = 0.6,
   eta_converged = 0.99,
   validate.converged = FALSE,
@@ -28,6 +28,7 @@ min_contrast_trust_region(
   line_iterations.prefit = 4,
   max.directions.main = NULL,
   max.directions.prefit = 1,
+  carry.directions = FALSE,
   countPrefitLoops = 2,
   max.iter.prefit = 10,
   tol = 10^-8,
@@ -133,6 +134,24 @@ block, which has one free parameter and so no direction set to update. The main 
 where the accuracy has to come from: on study1, scoring each fit's endpoint against a
 fresh 400-pattern ensemble, \code{max.directions = 1} averaged a contrast of 1.83 against
 0.91 for \code{NULL} -- about twice the error for about a twelfth of the runtime.}
+
+\item{carry.directions}{Keep \code{\link{trust_step}}'s conjugate direction set from
+one iteration to the next (\code{TRUE}) instead of rebuilding it from the coordinate axes on
+every step (\code{FALSE}, the previous behaviour). Accumulating the set across iterations is
+the mechanism behind Powell (1964); rebuilding it discards that, and additionally makes
+every step open with a line search along free parameter 1, which biases the search
+toward that parameter -- measured on study1's K block, where log kappa overshot its
+target by 72\% while log omega reached only a third of its own. The set is dropped back
+to the axes whenever it goes singular, since a singular set has lost a search dimension.
+
+\strong{Only turn this on together with \code{max.directions} at \code{NULL}.} The two interact: with
+few direction updates per step the carried set refreshes too slowly, a stale conjugate
+direction persists while the coordinate axes are shuffled out, and the search does worse
+than if it had restarted. Measured on study1's K block (12 seeds, 10 iterations), median
+error against the target movement was 0.594 at \code{max.directions = 1} without carrying,
+0.646 at \code{max.directions = 1} \emph{with} carrying, 0.372 at \code{NULL} without, and \strong{0.176 at
+\code{NULL} with}. Hence the default is \code{FALSE}, so that the default \code{max.directions = 1}
+does not silently land in the worst of those four.}
 
 \item{countPrefitLoops}{How many times to repeat the pre-fitting cycle, where one cycle
 is a pure K-function fit of \verb{(log kappa, log omega)} followed by a fit of \verb{log mu}

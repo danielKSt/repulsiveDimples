@@ -63,6 +63,23 @@
 #' A large spread in the contrast across repeat ensembles at the fitted parameters is
 #' worth checking separately: it means `nSims` is too small for the accept/reject decision
 #' itself to be meaningful.
+#' @param carry.directions Keep \code{\link{trust_step}}'s conjugate direction set from
+#' one iteration to the next (`TRUE`) instead of rebuilding it from the coordinate axes on
+#' every step (`FALSE`, the previous behaviour). Accumulating the set across iterations is
+#' the mechanism behind Powell (1964); rebuilding it discards that, and additionally makes
+#' every step open with a line search along free parameter 1, which biases the search
+#' toward that parameter -- measured on study1's K block, where log kappa overshot its
+#' target by 72% while log omega reached only a third of its own. The set is dropped back
+#' to the axes whenever it goes singular, since a singular set has lost a search dimension.
+#'
+#' **Only turn this on together with `max.directions` at `NULL`.** The two interact: with
+#' few direction updates per step the carried set refreshes too slowly, a stale conjugate
+#' direction persists while the coordinate axes are shuffled out, and the search does worse
+#' than if it had restarted. Measured on study1's K block (12 seeds, 10 iterations), median
+#' error against the target movement was 0.594 at `max.directions = 1` without carrying,
+#' 0.646 at `max.directions = 1` *with* carrying, 0.372 at `NULL` without, and **0.176 at
+#' `NULL` with**. Hence the default is `FALSE`, so that the default `max.directions = 1`
+#' does not silently land in the worst of those four.
 #' @param subsection_count.main,subsection_count.prefit Points per line search grid inside
 #' \code{\link{trust_step}}, at least 5, for the main fit and for the pre-fitting blocks
 #' respectively.
@@ -108,11 +125,12 @@
 #' @export
 min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
                                       xlims, ylims, nSims, deltaInit, eta, deltaMax, deltaMin = 0.0001,
-                                      wq = c(1000, 1/4), normalized = FALSE, eta_trust = 0.6,
+                                      wq = c(1000, 1/4), normalized = TRUE, eta_trust = 0.6,
                                       eta_converged = 0.99, validate.converged = FALSE,
                                       subsection_count.main = 11, subsection_count.prefit = 11,
                                       line_iterations.main = 4, line_iterations.prefit = 4,
                                       max.directions.main = NULL, max.directions.prefit = 1,
+                                      carry.directions = FALSE,
                                       countPrefitLoops = 2, max.iter.prefit = 10,
                                       tol = 10^-8, max.iter = 1000, printProgress = FALSE){
   if(max.iter < 1){
@@ -153,6 +171,7 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
                                       subsection_count = subsection_count.prefit,
                                       line_iterations = line_iterations.prefit,
                                       max.directions = max.directions.prefit,
+                                      carry.directions = carry.directions,
                                       tol = tol, max.iter = max.iter.prefit,
                                       printProgress = printProgress,
                                       label = paste0("prefit (", blockName, ")"))
@@ -174,6 +193,7 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
                            subsection_count = subsection_count.main,
                            line_iterations = line_iterations.main,
                            max.directions = max.directions.main,
+                           carry.directions = carry.directions,
                            tol = tol, max.iter = max.iter,
                            printProgress = printProgress,
                            label = "main fit")
@@ -261,6 +281,23 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
 #' A large spread in the contrast across repeat ensembles at the fitted parameters is
 #' worth checking separately: it means `nSims` is too small for the accept/reject decision
 #' itself to be meaningful.
+#' @param carry.directions Keep \code{\link{trust_step}}'s conjugate direction set from
+#' one iteration to the next (`TRUE`) instead of rebuilding it from the coordinate axes on
+#' every step (`FALSE`, the previous behaviour). Accumulating the set across iterations is
+#' the mechanism behind Powell (1964); rebuilding it discards that, and additionally makes
+#' every step open with a line search along free parameter 1, which biases the search
+#' toward that parameter -- measured on study1's K block, where log kappa overshot its
+#' target by 72% while log omega reached only a third of its own. The set is dropped back
+#' to the axes whenever it goes singular, since a singular set has lost a search dimension.
+#'
+#' **Only turn this on together with `max.directions` at `NULL`.** The two interact: with
+#' few direction updates per step the carried set refreshes too slowly, a stale conjugate
+#' direction persists while the coordinate axes are shuffled out, and the search does worse
+#' than if it had restarted. Measured on study1's K block (12 seeds, 10 iterations), median
+#' error against the target movement was 0.594 at `max.directions = 1` without carrying,
+#' 0.646 at `max.directions = 1` *with* carrying, 0.372 at `NULL` without, and **0.176 at
+#' `NULL` with**. Hence the default is `FALSE`, so that the default `max.directions = 1`
+#' does not silently land in the worst of those four.
 #' @param subsection_count Points per line search grid inside \code{\link{trust_step}},
 #' at least 5.
 #' @param line_iterations How many times each line search refines its grid.
@@ -285,9 +322,10 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
 #' @export
 trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
                               xlims, ylims, nSims, deltaInit, eta, deltaMax, deltaMin = 0.0001,
-                              wq = c(1000, 1/4), normalized = FALSE, eta_trust = 0.6,
+                              wq = c(1000, 1/4), normalized = TRUE, eta_trust = 0.6,
                               eta_converged = 0.99, validate.converged = FALSE,
                               subsection_count = 11, line_iterations = 4, max.directions = 1,
+                              carry.directions = FALSE,
                               tol = 10^-8, max.iter = 1000, printProgress = FALSE,
                               label = "trust region"){
   # Initialize output: ----
@@ -320,6 +358,10 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
   f_vals[1] <- trust_function(xSim)$f_est
   delta <- deltaInit
   converged <- FALSE
+  # NULL asks trust_step for the coordinate axes. With carry.directions it is replaced by
+  # whatever the step leaves behind, so the conjugate directions accumulate across
+  # iterations rather than being rebuilt from the axes every time.
+  directions <- NULL
 
   # Optimization loop: ----
   while((nSteps < max.iter) && !converged){
@@ -329,7 +371,10 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
     res <- trust_step(x_0 = xSim, delta = delta, trust_function = trust_function,
                       eta_trust = eta_trust, nSims = nSims,
                       subsection_count = subsection_count, line_iterations = line_iterations,
-                      max.directions = max.directions)
+                      max.directions = max.directions, directions = directions)
+    if(carry.directions){
+      directions <- res$directions
+    }
     # The minimiser of the trust function is still well supported by the ensemble simulated
     # at the current iterate, so the importance sampling has not been stretched and the fit
     # has nothing left to re-simulate for.

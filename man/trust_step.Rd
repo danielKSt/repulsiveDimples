@@ -12,7 +12,8 @@ trust_step(
   nSims,
   subsection_count = 11,
   line_iterations = 4,
-  max.directions = 1
+  max.directions = 1,
+  directions = NULL
 )
 }
 \arguments{
@@ -45,11 +46,20 @@ the outer loop compensates by taking more steps -- on study1 the saving was larg
 unambiguous while the difference in final contrast stayed inside the run-to-run spread,
 which is not the same as showing the two are equivalent. At 0 the step degenerates into
 a single line search along the first free parameter.}
+
+\item{directions}{Direction set to start this step from, as an \verb{n x n} matrix of
+columns, or \code{NULL} for the coordinate axes. Pass back the \code{directions} a previous step
+returned to continue accumulating conjugate directions across trust region iterations
+instead of restarting from the axes every time -- the accumulation is the mechanism
+behind Powell (1964), and restarting discards it. Restarting also makes every step open
+with a line search along free parameter 1, which biases the search toward that
+parameter. See \code{\link{trust_region_loop}}'s \code{carry.directions}.}
 }
 \value{
 A list with \code{x_star} (the trust region minimiser), \code{f_pred} and \code{ess_star}
-(the contrast estimate and effective sample size there), and \code{ess_bounds} (the
-per-parameter breakdown bounds accumulated over this step).
+(the contrast estimate and effective sample size there), \code{ess_bounds} (the
+per-parameter breakdown bounds accumulated over this step), and \code{directions} (the
+direction set as this step left it, to feed back in through \code{directions}).
 }
 \description{
 Iterate from params_sim using importance sampling on the realizations patternSim, simulated from params_sim.
