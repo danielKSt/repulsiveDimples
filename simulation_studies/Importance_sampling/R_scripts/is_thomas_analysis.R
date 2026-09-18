@@ -4,7 +4,9 @@ library(viridis)
 library(dplyr)
 library(patchwork)
 library(repulsiveDimples)
-setwd("/Users/danielks/Library/CloudStorage/OneDrive-NTNU/PhD/Aalborg/repulsiveDimples/simulation_studies/Importance_sampling/")
+# Run from the project root. The paths below are relative to this directory, so a second
+# sourcing in the same session fails here, the working directory already being it.
+setwd("simulation_studies/Importance_sampling/")
 
 source("R_scripts/is_analysis_helpers.R")
 load("Results/study4.RDa")
