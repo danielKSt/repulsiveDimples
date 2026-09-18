@@ -37,6 +37,17 @@
 #' at an ESS-converged step is the minimum of the importance sampling surface taken over
 #' the same ensemble that defines it, and so is optimistic by up to an order of magnitude
 #' (0.143 reported against 2.49 measured, at 0.8).
+#'
+#' Measured on the parameters rather than on the contrast, the same setting matters much
+#' less: 50 paired fits at `nSims = 500` differing only in this argument put the mean L2
+#' error in log parameters at 0.625 for 0.9 against 0.663 for 0.99, with 0.99 ahead in 19
+#' of the 50 pairs (paired p = 0.15) and costing 1.4 times the wall time. What those runs
+#' do settle is where the error comes from. Bias dominates variance about 3:1 in every
+#' parameter, and a paired check at `nSims = 5000` put the contrast at 0.0384 at the true
+#' parameters against 0.2372 at the median fitted point (15 reps, p = 0.007): the contrast
+#' surface prefers the truth, and the optimizer stops short of it. A disappointing fit is
+#' therefore evidence about how hard \code{\link{trust_step}} searched -- `max.directions`,
+#' and which `method` it used -- rather than about the contrast function or its weights.
 #' @param validate.converged What to do with the iterate that triggers `eta_converged`.
 #' `FALSE` (the default) accepts it straight from the importance sampling surface and
 #' stops, never simulating there. `TRUE` puts it through the same fresh simulation and
@@ -389,6 +400,17 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
 #' at an ESS-converged step is the minimum of the importance sampling surface taken over
 #' the same ensemble that defines it, and so is optimistic by up to an order of magnitude
 #' (0.143 reported against 2.49 measured, at 0.8).
+#'
+#' Measured on the parameters rather than on the contrast, the same setting matters much
+#' less: 50 paired fits at `nSims = 500` differing only in this argument put the mean L2
+#' error in log parameters at 0.625 for 0.9 against 0.663 for 0.99, with 0.99 ahead in 19
+#' of the 50 pairs (paired p = 0.15) and costing 1.4 times the wall time. What those runs
+#' do settle is where the error comes from. Bias dominates variance about 3:1 in every
+#' parameter, and a paired check at `nSims = 5000` put the contrast at 0.0384 at the true
+#' parameters against 0.2372 at the median fitted point (15 reps, p = 0.007): the contrast
+#' surface prefers the truth, and the optimizer stops short of it. A disappointing fit is
+#' therefore evidence about how hard \code{\link{trust_step}} searched -- `max.directions`,
+#' and which `method` it used -- rather than about the contrast function or its weights.
 #' @param validate.converged What to do with the iterate that triggers `eta_converged`.
 #' `FALSE` (the default) accepts it straight from the importance sampling surface and
 #' stops, never simulating there. `TRUE` puts it through the same fresh simulation and
