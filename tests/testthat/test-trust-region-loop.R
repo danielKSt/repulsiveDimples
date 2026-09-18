@@ -72,3 +72,39 @@ test_that("carry.directions runs end to end and does not disturb the bookkeeping
   expect_equal(nrow(res$x_seq), length(res$f_vals))
   expect_true(all(is.finite(res$f_vals)))
 })
+
+test_that("method = quadratic runs the whole loop and keeps the bookkeeping", {
+  res <- run_loop(eta_trust = 0.5, eta_converged = 0.99, max.iter = 4,
+                  method = "quadratic", bisection_iterations = 4)
+  expect_equal(nrow(res$x_seq), length(res$f_vals))
+  expect_equal(ncol(res$x_seq), 3L)
+  expect_true(all(is.finite(res$f_vals)))
+  expect_equal(as.numeric(res$params), as.numeric(res$x_seq[nrow(res$x_seq), ]))
+})
+
+test_that("the quadratic method works on a block with one free parameter", {
+  # The mu prefit block has a single free parameter, where a quadratic needs three points
+  # and there are no cross terms to place.
+  f <- fixture()
+  old <- options(mc.cores = 1)
+  on.exit(options(old), add = TRUE)
+  set.seed(3)
+  res <- trust_region_loop(params = f$params, parFreeIndex = 3, repRange = f$repRange,
+                           rho_hat = f$rho_hat, K_hat = f$K_hat, xlims = f$xlims,
+                           ylims = f$ylims, nSims = f$nSims, deltaInit = 0.2, eta = 0.05,
+                           deltaMax = 1, wq = c(1, 1/4), eta_trust = 0.5,
+                           eta_converged = 0.99, max.iter = 3, method = "quadratic",
+                           bisection_iterations = 4)
+  expect_equal(res$params[c(1, 2)], f$params[c(1, 2)])
+  expect_equal(ncol(res$x_seq), 1L)
+  expect_true(all(is.finite(res$f_vals)))
+})
+
+test_that("carry.ess_bounds runs end to end without disturbing the bookkeeping", {
+  for (meth in c("conjugate", "quadratic")) {
+    res <- run_loop(eta_trust = 0.5, eta_converged = 0.99, max.iter = 4, method = meth,
+                    bisection_iterations = 4, carry.ess_bounds = TRUE)
+    expect_equal(nrow(res$x_seq), length(res$f_vals))
+    expect_true(all(is.finite(res$f_vals)))
+  }
+})

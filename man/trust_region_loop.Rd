@@ -26,6 +26,10 @@ trust_region_loop(
   line_iterations = 4,
   max.directions = 1,
   carry.directions = FALSE,
+  carry.ess_bounds = TRUE,
+  method = c("conjugate", "quadratic"),
+  interp_fraction = 0.25,
+  bisection_iterations = 10,
   tol = 10^-8,
   max.iter = 1000,
   printProgress = FALSE,
@@ -142,6 +146,50 @@ error against the target movement was 0.594 at \code{max.directions = 1} without
 0.646 at \code{max.directions = 1} \emph{with} carrying, 0.372 at \code{NULL} without, and \strong{0.176 at
 \code{NULL} with}. Hence the default is \code{FALSE}, so that the default \code{max.directions = 1}
 does not silently land in the worst of those four.}
+
+\item{carry.ess_bounds}{Keep the parameter values at which the importance sampling was
+seen to break down from one trust region iteration to the next, when the iteration in
+between was \emph{rejected}. A rejected step leaves both the iterate and the ensemble
+untouched, so the region the ensemble supports is exactly the one the previous step
+mapped, and re-deriving it costs evaluations to learn what is already known. Only the
+trust radius has changed. The bounds are dropped whenever a step is accepted, since the
+iterate has moved and a fresh ensemble has been simulated there, and
+\code{\link{ess_bounds_carried}} additionally refuses any set whose centre does not
+match the iterate about to be searched from.
+
+This is worth much more to \code{method = "quadratic"} than to \code{"conjugate"}. The quadratic
+step opens by bisecting for the breakdown along each coordinate, and carried bounds let
+those searches discard the part of each bracket beyond a crossing already located
+without evaluating there; the conjugate step only screens individual line search points,
+and on a shrunken region most of those were going to be inside the mapped region anyway.
+Re-running a step at the same centre and ensemble with the radius reduced, over 4
+ensembles at \code{nSims = 300}, the evaluations it saved were
+
+\tabular{lrr}{
+\tab quadratic \tab conjugate \cr
+\code{delta} 0.20 to 0.18 \tab 28-35\% \tab 0-2\% \cr
+\code{delta} 0.20 to 0.16 \tab 19-38\% \tab 1-6\% \cr
+\code{delta} 0.20 to 0.10 \tab 0-11\%  \tab 0\%
+}
+
+The gentler the reduction, the more of the previous step's mapping still applies, and
+the more there is to save. A step that halves the radius is searching a region small
+enough that little of what was learned at the old radius bears on it.
+
+It costs nothing in accuracy: the iterate was identical with and without the carried
+bounds in all 24 of those comparisons, and it has to be, since a point the bounds skip
+is one the search would have evaluated and rejected. What carrying changes is only
+whether it is paid for.}
+
+\item{method}{Which \code{\link{trust_step}} method to use, \code{"conjugate"} (the
+default, and the original behaviour) or \code{"quadratic"}. See \code{\link{trust_step}}.}
+
+\item{interp_fraction}{How much of the supported box
+\code{\link{trust_step_quadratic}} spreads its interpolation points over. Ignored when
+\code{method} is \code{"conjugate"}.}
+
+\item{bisection_iterations}{Bisection steps per ray search inside
+\code{\link{trust_step_quadratic}}. Ignored when \code{method} is \code{"conjugate"}.}
 
 \item{tol}{Convergence tolerance.}
 

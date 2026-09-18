@@ -9,8 +9,9 @@
 #'
 #' Before the main fit, the parameters can optionally be pre-fitted in blocks: first
 #' `(log kappa, log omega)` against the K-function alone, then `log mu` against the full
-#' contrast function. This is repeated `countPrefitLoops` times, and is skipped entirely
-#' when `max.iter.prefit` is 0.
+#' contrast function. That cycle repeats until it stops moving the parameters -- until one
+#' cycle shifts them by less than `tolPrefitLoops` -- or until `maxPrefitLoops` cycles have
+#' run, whichever comes first. Pre-fitting is skipped entirely when `max.iter.prefit` is 0.
 #'
 #' @param params Initial guess for parameters to estimate
 #' @param parFreeIndex Indices of parameters to estimate
@@ -100,6 +101,59 @@
 #' where the accuracy has to come from: on study1, scoring each fit's endpoint against a
 #' fresh 400-pattern ensemble, `max.directions = 1` averaged a contrast of 1.83 against
 #' 0.91 for `NULL` -- about twice the error for about a twelfth of the runtime.
+#' @param method.main,method.prefit Which \code{\link{trust_step}} method to use, for the
+#' main fit and for the pre-fitting blocks respectively. `"conjugate"` (the default, and
+#' the original behaviour) sweeps conjugate direction line searches in the manner of
+#' Powell (1964); `"quadratic"` fits a quadratic model to a set of interpolation points and
+#' minimises that, in the manner of UOBYQA (Powell 2002). See \code{\link{trust_step}} for
+#' what separates them, and \code{\link{trust_step_quadratic}} for what the second one has
+#' to do about the effective sample size requirement that the first can ignore.
+#'
+#' They are split for the same reason the line search settings are: the pre-fitting blocks
+#' have one and two free parameters, where a quadratic model needs only three and six
+#' interpolation points, while the main fit has three and needs ten. Nothing has been
+#' measured about which method suits which phase.
+#' @param carry.ess_bounds Keep the parameter values at which the importance sampling was
+#' seen to break down from one trust region iteration to the next, when the iteration in
+#' between was *rejected*. A rejected step leaves both the iterate and the ensemble
+#' untouched, so the region the ensemble supports is exactly the one the previous step
+#' mapped, and re-deriving it costs evaluations to learn what is already known. Only the
+#' trust radius has changed. The bounds are dropped whenever a step is accepted, since the
+#' iterate has moved and a fresh ensemble has been simulated there, and
+#' \code{\link{ess_bounds_carried}} additionally refuses any set whose centre does not
+#' match the iterate about to be searched from.
+#'
+#' This is worth much more to `method = "quadratic"` than to `"conjugate"`. The quadratic
+#' step opens by bisecting for the breakdown along each coordinate, and carried bounds let
+#' those searches discard the part of each bracket beyond a crossing already located
+#' without evaluating there; the conjugate step only screens individual line search points,
+#' and on a shrunken region most of those were going to be inside the mapped region anyway.
+#' Re-running a step at the same centre and ensemble with the radius reduced, over 4
+#' ensembles at `nSims = 300`, the evaluations it saved were
+#'
+#' \tabular{lrr}{
+#'   \tab quadratic \tab conjugate \cr
+#'   `delta` 0.20 to 0.18 \tab 28-35% \tab 0-2% \cr
+#'   `delta` 0.20 to 0.16 \tab 19-38% \tab 1-6% \cr
+#'   `delta` 0.20 to 0.10 \tab 0-11%  \tab 0%
+#' }
+#'
+#' The gentler the reduction, the more of the previous step's mapping still applies, and
+#' the more there is to save. A step that halves the radius is searching a region small
+#' enough that little of what was learned at the old radius bears on it.
+#'
+#' It costs nothing in accuracy: the iterate was identical with and without the carried
+#' bounds in all 24 of those comparisons, and it has to be, since a point the bounds skip
+#' is one the search would have evaluated and rejected. What carrying changes is only
+#' whether it is paid for.
+#' @param interp_fraction.main,interp_fraction.prefit How much of the supported box
+#' \code{\link{trust_step_quadratic}} spreads its interpolation points over, for the main
+#' fit and for the pre-fitting blocks. Ignored when the corresponding `method` is
+#' `"conjugate"`. See \code{\link{trust_step_quadratic}}, where this is the argument that
+#' most affects how good the resulting step is.
+#' @param bisection_iterations.main,bisection_iterations.prefit Bisection steps per ray
+#' search inside \code{\link{trust_step_quadratic}}, for the main fit and for the
+#' pre-fitting blocks. Ignored when the corresponding `method` is `"conjugate"`.
 #' @param xlims Simulation window x limits
 #' @param ylims Simulation window y limits
 #' @param nSims Number of simulations
@@ -109,18 +163,50 @@
 #' @param deltaMin Convergence tolerance for trust region radius
 #' @param tol Convergence tolerance
 #' @param max.iter Maximum iterations
-#' @param max.iter.prefit How many iterations to do at most for the pre-fitting. Set to 0
-#' (the default) to skip pre-fitting altogether.
-#' @param countPrefitLoops How many times to repeat the pre-fitting cycle, where one cycle
-#' is a pure K-function fit of `(log kappa, log omega)` followed by a fit of `log mu`
-#' alone. Ignored when `max.iter.prefit` is 0.
+#' @param max.iter.prefit How many iterations to do at most inside each pre-fitting block.
+#' Set to 0 to skip pre-fitting altogether.
+#' @param tolPrefitLoops Stop pre-fitting once one full cycle moves the parameters by less
+#' than this, and go on to the main fit for the final adjustments. The distance is
+#' Euclidean, on the log scale the optimizer works on, taken over every coordinate in
+#' `parFreeIndex` between the vector entering the cycle and the vector leaving it. Set to 0
+#' to disable the check and always run `maxPrefitLoops` cycles.
+#'
+#' Pre-fitting is a block-coordinate warm start, so the useful question is whether it is
+#' still making progress, not whether it has converged; a tolerance is the natural way to
+#' ask that, since the cycles settle geometrically and a fixed count cannot know where.
+#' Measured over study1's saved fits (200 fits per ensemble size, four cycles each), the
+#' median distance moved per cycle ran 0.93, 0.21, 0.08, 0.03 at `nSims = 10000` and
+#' 0.88, 0.25, 0.13, 0.07 at `nSims = 500`. Replaying this rule over those same movements,
+#' the default of 0.05 stops at cycle 3 or 4 for 86% of fits at `nSims = 10000` (14% and
+#' 72%) and 83% at `nSims = 5000` (27% and 56%), leaving the rest to `maxPrefitLoops`.
+#'
+#' Two things to watch. A small ensemble makes the blocks noisy enough to stop early by
+#' accident: at `nSims = 500` the same tolerance ends 3% of fits after the *first* cycle
+#' and another 5% after the second, which at a median first-cycle movement of 0.88 is
+#' plainly the noise and not a settled fit. And tightening much below 0.01 is not useful
+#' in the other direction, because by then the cycle-to-cycle movement is the sampling
+#' error of the block fits rather than progress, so the tolerance simply never fires and
+#' `maxPrefitLoops` decides after all.
+#' @param maxPrefitLoops Most pre-fitting cycles to run, where one cycle is a pure
+#' K-function fit of `(log kappa, log omega)` followed by a fit of `log mu` alone. This is
+#' a cap on `tolPrefitLoops` rather than the usual stopping rule, and the default of 6 sits
+#' above where that tolerance normally fires so that it rarely binds -- on study1 it would
+#' have caught the 14% of fits at `nSims = 10000` that the tolerance did not. Ignored when
+#' `max.iter.prefit` is 0.
 #' @param printProgress Set to TRUE to get updates on progress while running
 #'
 #' @return A list with `params` (the matrix of iterates, one row per step),
 #' `f_vals` (the contrast value at each iterate), `update_evals` (the per-step
-#' \code{\link{trust_step}} and \code{\link{evaluate_improvement}} output), and
+#' \code{\link{trust_step}} and \code{\link{evaluate_improvement}} output),
 #' `prefitResults` (the same three quantities for each pre-fitting block, or `NULL`
-#' when no pre-fitting was done).
+#' when no pre-fitting was done), and `prefitMoves` (the distance each pre-fitting cycle
+#' moved the parameters, the series `tolPrefitLoops` is tested against).
+#'
+#' `prefitResults` and `prefitMoves` are trimmed to the number of cycles that actually
+#' ran, so `length(prefitMoves)` is that count and its last entry says which rule stopped
+#' the pre-fitting: below `tolPrefitLoops` means the tolerance fired, at or above it means
+#' `maxPrefitLoops` bound. Fits in the same study can therefore carry different numbers of
+#' pre-fitting cycles, which is worth remembering when tabulating them by cycle.
 #'
 #' @export
 min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
@@ -130,11 +216,25 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
                                       subsection_count.main = 11, subsection_count.prefit = 11,
                                       line_iterations.main = 4, line_iterations.prefit = 4,
                                       max.directions.main = NULL, max.directions.prefit = 1,
-                                      carry.directions = FALSE,
-                                      countPrefitLoops = 2, max.iter.prefit = 10,
+                                      carry.directions = FALSE, carry.ess_bounds = TRUE,
+                                      method.main = c("conjugate", "quadratic"),
+                                      method.prefit = c("conjugate", "quadratic"),
+                                      interp_fraction.main = 0.25,
+                                      interp_fraction.prefit = 0.25,
+                                      bisection_iterations.main = 10,
+                                      bisection_iterations.prefit = 10,
+                                      tolPrefitLoops = 0.05, maxPrefitLoops = 6,
+                                      max.iter.prefit = 10,
                                       tol = 10^-8, max.iter = 1000, printProgress = FALSE){
   if(max.iter < 1){
     stop("max.iter must be at least 1.")
+  }
+  method.main <- match.arg(method.main)
+  method.prefit <- match.arg(method.prefit)
+  # A negative tolerance can never fire, which is what 0 already means, so it is far more
+  # likely to be a typo than an intent to switch the check off.
+  if(tolPrefitLoops < 0){
+    stop("tolPrefitLoops must be at least 0. Use 0 to always run maxPrefitLoops cycles.")
   }
 
   # Prefit loop: ----
@@ -143,12 +243,16 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
   # the same trust region iteration as the main fit, only over fewer coordinates and
   # with different contrast weights, so all three are the same call.
   prefitResults <- NULL
-  if((max.iter.prefit > 0) && (countPrefitLoops > 0)){
+  prefitMoves <- NULL
+  if((max.iter.prefit > 0) && (maxPrefitLoops > 0)){
     prefitBlocks <- list(K  = list(index = intersect(parFreeIndex, c(1, 2)), wq = c(0, wq[2])),
                          mu = list(index = intersect(parFreeIndex, 3),       wq = wq))
-    prefitResults <- vector(mode = "list", length = countPrefitLoops)
+    prefitResults <- vector(mode = "list", length = maxPrefitLoops)
+    prefitMoves <- rep(NA_real_, maxPrefitLoops)
+    prefitLoopsRun <- 0
 
-    for(prefitLoop in 1:countPrefitLoops){
+    for(prefitLoop in 1:maxPrefitLoops){
+      paramsBeforeLoop <- params
       loopResults <- vector(mode = "list", length = length(prefitBlocks))
       names(loopResults) <- names(prefitBlocks)
 
@@ -158,7 +262,7 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
           next
         }
         if(printProgress){
-          print(paste0("Starting prefit cycle ", prefitLoop, " of ", countPrefitLoops,
+          print(paste0("Starting prefit cycle ", prefitLoop, " of at most ", maxPrefitLoops,
                        ", fitting on ", blockName, ":"))
         }
         blockRes <- trust_region_loop(params = params, parFreeIndex = block$index,
@@ -172,6 +276,10 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
                                       line_iterations = line_iterations.prefit,
                                       max.directions = max.directions.prefit,
                                       carry.directions = carry.directions,
+                                      carry.ess_bounds = carry.ess_bounds,
+                                      method = method.prefit,
+                                      interp_fraction = interp_fraction.prefit,
+                                      bisection_iterations = bisection_iterations.prefit,
                                       tol = tol, max.iter = max.iter.prefit,
                                       printProgress = printProgress,
                                       label = paste0("prefit (", blockName, ")"))
@@ -179,7 +287,29 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
         loopResults[[blockName]] <- blockRes
       }
       prefitResults[[prefitLoop]] <- loopResults
+      prefitLoopsRun <- prefitLoop
+
+      # How far the whole cycle moved the parameters, measured over every free coordinate
+      # rather than one block's: a cycle that leaves (log kappa, log omega) where it found
+      # them but still shifts log mu has not settled. Once that movement drops below the
+      # tolerance the blocks have stopped making progress, and what is left is the joint
+      # adjustment the main fit does anyway, so there is nothing to gain from another
+      # cycle of them.
+      prefitMoves[prefitLoop] <- sqrt(sum((params[parFreeIndex] - paramsBeforeLoop[parFreeIndex])^2))
+      if(prefitMoves[prefitLoop] < tolPrefitLoops){
+        if(printProgress){
+          print(paste0("Prefit cycle ", prefitLoop, " moved the parameters by ",
+                       signif(prefitMoves[prefitLoop], 3), ", below tolPrefitLoops (",
+                       tolPrefitLoops, "). Moving on to the main fit."))
+        }
+        break
+      }
     }
+
+    # Trimmed to the cycles that actually ran, so length() is that count and the caller is
+    # not handed trailing NULLs to filter out.
+    prefitResults <- prefitResults[seq_len(prefitLoopsRun)]
+    prefitMoves <- prefitMoves[seq_len(prefitLoopsRun)]
   }
 
   # Main fit: ----
@@ -194,6 +324,10 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
                            line_iterations = line_iterations.main,
                            max.directions = max.directions.main,
                            carry.directions = carry.directions,
+                           carry.ess_bounds = carry.ess_bounds,
+                           method = method.main,
+                           interp_fraction = interp_fraction.main,
+                           bisection_iterations = bisection_iterations.main,
                            tol = tol, max.iter = max.iter,
                            printProgress = printProgress,
                            label = "main fit")
@@ -201,7 +335,8 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
   return(list(params = res$x_seq,
               f_vals = res$f_vals,
               update_evals = res$update_evals,
-              prefitResults = prefitResults))
+              prefitResults = prefitResults,
+              prefitMoves = prefitMoves))
 }
 
 #' One trust region fit over a subset of the parameters
@@ -298,6 +433,46 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
 #' 0.646 at `max.directions = 1` *with* carrying, 0.372 at `NULL` without, and **0.176 at
 #' `NULL` with**. Hence the default is `FALSE`, so that the default `max.directions = 1`
 #' does not silently land in the worst of those four.
+#' @param carry.ess_bounds Keep the parameter values at which the importance sampling was
+#' seen to break down from one trust region iteration to the next, when the iteration in
+#' between was *rejected*. A rejected step leaves both the iterate and the ensemble
+#' untouched, so the region the ensemble supports is exactly the one the previous step
+#' mapped, and re-deriving it costs evaluations to learn what is already known. Only the
+#' trust radius has changed. The bounds are dropped whenever a step is accepted, since the
+#' iterate has moved and a fresh ensemble has been simulated there, and
+#' \code{\link{ess_bounds_carried}} additionally refuses any set whose centre does not
+#' match the iterate about to be searched from.
+#'
+#' This is worth much more to `method = "quadratic"` than to `"conjugate"`. The quadratic
+#' step opens by bisecting for the breakdown along each coordinate, and carried bounds let
+#' those searches discard the part of each bracket beyond a crossing already located
+#' without evaluating there; the conjugate step only screens individual line search points,
+#' and on a shrunken region most of those were going to be inside the mapped region anyway.
+#' Re-running a step at the same centre and ensemble with the radius reduced, over 4
+#' ensembles at `nSims = 300`, the evaluations it saved were
+#'
+#' \tabular{lrr}{
+#'   \tab quadratic \tab conjugate \cr
+#'   `delta` 0.20 to 0.18 \tab 28-35% \tab 0-2% \cr
+#'   `delta` 0.20 to 0.16 \tab 19-38% \tab 1-6% \cr
+#'   `delta` 0.20 to 0.10 \tab 0-11%  \tab 0%
+#' }
+#'
+#' The gentler the reduction, the more of the previous step's mapping still applies, and
+#' the more there is to save. A step that halves the radius is searching a region small
+#' enough that little of what was learned at the old radius bears on it.
+#'
+#' It costs nothing in accuracy: the iterate was identical with and without the carried
+#' bounds in all 24 of those comparisons, and it has to be, since a point the bounds skip
+#' is one the search would have evaluated and rejected. What carrying changes is only
+#' whether it is paid for.
+#' @param method Which \code{\link{trust_step}} method to use, `"conjugate"` (the
+#' default, and the original behaviour) or `"quadratic"`. See \code{\link{trust_step}}.
+#' @param interp_fraction How much of the supported box
+#' \code{\link{trust_step_quadratic}} spreads its interpolation points over. Ignored when
+#' `method` is `"conjugate"`.
+#' @param bisection_iterations Bisection steps per ray search inside
+#' \code{\link{trust_step_quadratic}}. Ignored when `method` is `"conjugate"`.
 #' @param subsection_count Points per line search grid inside \code{\link{trust_step}},
 #' at least 5.
 #' @param line_iterations How many times each line search refines its grid.
@@ -325,9 +500,12 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
                               wq = c(1000, 1/4), normalized = TRUE, eta_trust = 0.6,
                               eta_converged = 0.99, validate.converged = FALSE,
                               subsection_count = 11, line_iterations = 4, max.directions = 1,
-                              carry.directions = FALSE,
+                              carry.directions = FALSE, carry.ess_bounds = TRUE,
+                              method = c("conjugate", "quadratic"),
+                              interp_fraction = 0.25, bisection_iterations = 10,
                               tol = 10^-8, max.iter = 1000, printProgress = FALSE,
                               label = "trust region"){
+  method <- match.arg(method)
   # Initialize output: ----
   nSteps <- 1
   x_sequence <- matrix(data = NA, nrow = max.iter, ncol = length(parFreeIndex))
@@ -362,6 +540,10 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
   # whatever the step leaves behind, so the conjugate directions accumulate across
   # iterations rather than being rebuilt from the axes every time.
   directions <- NULL
+  # Likewise NULL asks trust_step for a fresh set of breakdown bounds. With
+  # carry.ess_bounds it is replaced by whatever a rejected step leaves behind, and dropped
+  # again the moment a step is accepted and the ensemble moves.
+  ess_bounds <- NULL
 
   # Optimization loop: ----
   while((nSteps < max.iter) && !converged){
@@ -369,11 +551,17 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
       print(paste0("Starting ", label, " iteration number: ", nSteps))
     }
     res <- trust_step(x_0 = xSim, delta = delta, trust_function = trust_function,
-                      eta_trust = eta_trust, nSims = nSims,
+                      eta_trust = eta_trust, nSims = nSims, method = method,
                       subsection_count = subsection_count, line_iterations = line_iterations,
-                      max.directions = max.directions, directions = directions)
+                      max.directions = max.directions, directions = directions,
+                      interp_fraction = interp_fraction,
+                      bisection_iterations = bisection_iterations,
+                      ess_bounds = ess_bounds)
     if(carry.directions){
       directions <- res$directions
+    }
+    if(carry.ess_bounds){
+      ess_bounds <- res$ess_bounds
     }
     # The minimiser of the trust function is still well supported by the ensemble simulated
     # at the current iterate, so the importance sampling has not been stretched and the fit
@@ -419,6 +607,10 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
       xSim <- update_eval$x
       simStepRes <- simStepRes_star
       daughter_kernel_cache <- simStepRes_star$daughter_kernel_cache
+      # The iterate has moved and the trust function now re-weights a different ensemble,
+      # so everything the previous step learned about where that ensemble gives out
+      # describes a region this one is no longer searching.
+      ess_bounds <- NULL
     }
     change_after_step <- sum((x_sequence[nSteps + 1, ] - x_sequence[nSteps, ])^2)
     # `ess_converged` is carried down rather than acted on above, since with

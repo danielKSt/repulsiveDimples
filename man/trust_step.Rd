@@ -10,10 +10,14 @@ trust_step(
   trust_function,
   eta_trust,
   nSims,
+  method = c("conjugate", "quadratic"),
   subsection_count = 11,
   line_iterations = 4,
   max.directions = 1,
-  directions = NULL
+  directions = NULL,
+  interp_fraction = 0.25,
+  bisection_iterations = 10,
+  ess_bounds = NULL
 )
 }
 \arguments{
@@ -27,58 +31,55 @@ size of the importance sampling weights behind it).}
 
 \item{eta_trust}{Smallest \code{ess/nSims} an iterate is allowed to have, between 0 and 1.}
 
-\item{nSims}{Number of simulations the ensemble behind \code{trust_function} holds, i.e.
-the largest effective sample size attainable.}
+\item{nSims}{Number of simulations the ensemble behind \code{trust_function} holds.}
 
-\item{subsection_count}{Points per line search grid, at least 5. Each refinement
-re-grids the four intervals around the current minimum, so the search narrows by
-\code{4/(subsection_count - 1)} per round -- 0.4 at the default 11, but only 0.8 at 6, and
-nothing at all at 5.}
+\item{method}{Which method to use, \code{"conjugate"} or \code{"quadratic"}.}
 
-\item{line_iterations}{How many times each line search refines its grid, passed to
-\code{\link{trust_line_steps}} as \code{iterations}.}
+\item{subsection_count, line_iterations, max.directions, directions}{Passed to
+\code{\link{trust_step_conjugate}}, and ignored by the quadratic method.}
 
-\item{max.directions}{How many times the conjugate direction set may be updated.
-\code{NULL} restores the original \code{2*length(x_0) - 1}. The default of 1 keeps only the
-first update: a step is then a sweep along the current directions plus one conjugate
-correction. That makes each step cruder but several times cheaper, and over a whole fit
-the outer loop compensates by taking more steps -- on study1 the saving was large and
-unambiguous while the difference in final contrast stayed inside the run-to-run spread,
-which is not the same as showing the two are equivalent. At 0 the step degenerates into
-a single line search along the first free parameter.}
+\item{interp_fraction, bisection_iterations}{Passed to
+\code{\link{trust_step_quadratic}}, and ignored by the conjugate method.}
 
-\item{directions}{Direction set to start this step from, as an \verb{n x n} matrix of
-columns, or \code{NULL} for the coordinate axes. Pass back the \code{directions} a previous step
-returned to continue accumulating conjugate directions across trust region iterations
-instead of restarting from the axes every time -- the accumulation is the mechanism
-behind Powell (1964), and restarting discards it. Restarting also makes every step open
-with a line search along free parameter 1, which biases the search toward that
-parameter. See \code{\link{trust_region_loop}}'s \code{carry.directions}.}
+\item{ess_bounds}{Breakdown bounds from a previous step at the same \code{x_0}, used by both
+methods to skip points already known to break the effective sample size requirement, or
+\code{NULL} to start from scratch.}
 }
 \value{
-A list with \code{x_star} (the trust region minimiser), \code{f_pred} and \code{ess_star}
-(the contrast estimate and effective sample size there), \code{ess_bounds} (the
-per-parameter breakdown bounds accumulated over this step), and \code{directions} (the
-direction set as this step left it, to feed back in through \code{directions}).
+A list with \code{x_star} (the trust region minimiser), \code{f_pred} and \code{ess_star} (the
+contrast estimate and effective sample size there), \code{ess_bounds} (the per-parameter
+breakdown bounds accumulated over this step), and \code{directions} (the direction set as
+this step left it, or \code{NULL} from the quadratic method, which keeps none). The
+quadratic method additionally returns \code{box}.
 }
 \description{
-Iterate from params_sim using importance sampling on the realizations patternSim, simulated from params_sim.
-The iteration is restricted to the ball centered on the parameters used for simulation,
-with radius equal to the trust region radius.
+Minimises the importance sampling estimate of the contrast function over the trust
+region, by one of two methods, and returns the minimiser as the step to take. This is
+the dispatcher; \code{\link{trust_step_conjugate}} and
+\code{\link{trust_step_quadratic}} are the methods themselves and document what each
+one does.
 
-Every evaluation re-weights the one ensemble simulated at \code{x_0}, so it is only worth
-trusting while the importance sampling has not degenerated. Iterates are therefore
-additionally required to satisfy \code{ess/nSims > eta_trust}, and the parameter values at
-which that requirement was seen to break down are carried between the line searches
-(see \code{\link{ess_bounds_init}}) so that later ones can skip points already known
-to be too far out.
+Both re-weight the single ensemble simulated at \code{x_0}, so both are restricted to the
+ball of radius \code{delta} around it and to points where the importance sampling still has
+an effective sample size of at least \code{eta_trust*nSims}. What differs is how they search
+and, more to the point, how they treat a point that fails that requirement.
+
+\code{"conjugate"} sweeps a set of line searches in the manner of Powell (1964), building
+conjugate directions as it goes. A point it cannot support is simply dropped from the
+line it was found on and the search carries on, so the requirement costs it nothing
+beyond the evaluation. This is the original method and remains the default.
+
+\code{"quadratic"} fits a quadratic model to the contrast on a set of interpolation points
+and minimises that, in the manner of UOBYQA (Powell 2002). It cannot drop a point --
+a missing value is a missing row of the interpolation system -- so it first maps the
+region the ensemble supports by bisecting along each coordinate, and places its points
+inside what it finds. It spends far fewer evaluations than a conjugate step with
+\code{max.directions = NULL}, and unlike a line search it uses the curvature of the contrast
+rather than only its values along a line.
+
+Which is better on a given fit has not been measured, and the two have different
+failure modes: the conjugate step degrades gracefully into a cruder search when the
+region is awkward, while the quadratic step depends on an interpolation set that the
+region has not deformed too badly, and falls back on the best point it evaluated when
+it has.
 }
-\section{Cost}{
-
-A step costs at most \code{(1 + max.directions*(n + 1)) * (line_iterations + 1) * subsection_count} calls to \code{trust_function} for \code{n} free parameters, before the ESS
-screening prunes any of them and before the boundary test ends the loop early. At the
-defaults with three free parameters that is 5 line searches of 55 points each; passing
-\code{max.directions = NULL} restores the former 25. \code{trust_step} dominates the wall time of
-a fit -- on study1 one \code{simulation_step} is 0.16 s against 41 s for a \code{max.directions = NULL} step -- so these three arguments are the levers on how long a fit takes.
-}
-

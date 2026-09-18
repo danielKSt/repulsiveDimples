@@ -1,5 +1,82 @@
 #' Do one iteration within trust region
 #' @description
+#' Minimises the importance sampling estimate of the contrast function over the trust
+#' region, by one of two methods, and returns the minimiser as the step to take. This is
+#' the dispatcher; \code{\link{trust_step_conjugate}} and
+#' \code{\link{trust_step_quadratic}} are the methods themselves and document what each
+#' one does.
+#'
+#' Both re-weight the single ensemble simulated at `x_0`, so both are restricted to the
+#' ball of radius `delta` around it and to points where the importance sampling still has
+#' an effective sample size of at least `eta_trust*nSims`. What differs is how they search
+#' and, more to the point, how they treat a point that fails that requirement.
+#'
+#' `"conjugate"` sweeps a set of line searches in the manner of Powell (1964), building
+#' conjugate directions as it goes. A point it cannot support is simply dropped from the
+#' line it was found on and the search carries on, so the requirement costs it nothing
+#' beyond the evaluation. This is the original method and remains the default.
+#'
+#' `"quadratic"` fits a quadratic model to the contrast on a set of interpolation points
+#' and minimises that, in the manner of UOBYQA (Powell 2002). It cannot drop a point --
+#' a missing value is a missing row of the interpolation system -- so it first maps the
+#' region the ensemble supports by bisecting along each coordinate, and places its points
+#' inside what it finds. It spends far fewer evaluations than a conjugate step with
+#' `max.directions = NULL`, and unlike a line search it uses the curvature of the contrast
+#' rather than only its values along a line.
+#'
+#' Which is better on a given fit has not been measured, and the two have different
+#' failure modes: the conjugate step degrades gracefully into a cruder search when the
+#' region is awkward, while the quadratic step depends on an interpolation set that the
+#' region has not deformed too badly, and falls back on the best point it evaluated when
+#' it has.
+#'
+#' @param x_0 Parameter values used to simulate patternSim
+#' @param delta Trust region radius
+#' @param trust_function Trust function. Called on a parameter vector and expected to
+#' return a list with `f_est` (the contrast estimate) and `ess` (the effective sample
+#' size of the importance sampling weights behind it).
+#' @param eta_trust Smallest `ess/nSims` an iterate is allowed to have, between 0 and 1.
+#' @param nSims Number of simulations the ensemble behind `trust_function` holds.
+#' @param method Which method to use, `"conjugate"` or `"quadratic"`.
+#' @param subsection_count,line_iterations,max.directions,directions Passed to
+#' \code{\link{trust_step_conjugate}}, and ignored by the quadratic method.
+#' @param interp_fraction,bisection_iterations Passed to
+#' \code{\link{trust_step_quadratic}}, and ignored by the conjugate method.
+#' @param ess_bounds Breakdown bounds from a previous step at the same `x_0`, used by both
+#' methods to skip points already known to break the effective sample size requirement, or
+#' `NULL` to start from scratch.
+#'
+#' @return A list with `x_star` (the trust region minimiser), `f_pred` and `ess_star` (the
+#' contrast estimate and effective sample size there), `ess_bounds` (the per-parameter
+#' breakdown bounds accumulated over this step), and `directions` (the direction set as
+#' this step left it, or `NULL` from the quadratic method, which keeps none). The
+#' quadratic method additionally returns `box`.
+#'
+#' @export
+trust_step <- function(x_0, delta, trust_function, eta_trust, nSims,
+                       method = c("conjugate", "quadratic"),
+                       subsection_count = 11, line_iterations = 4, max.directions = 1,
+                       directions = NULL, interp_fraction = 0.25,
+                       bisection_iterations = 10, ess_bounds = NULL){
+  method <- match.arg(method)
+  if(method == "quadratic"){
+    return(trust_step_quadratic(x_0 = x_0, delta = delta, trust_function = trust_function,
+                                eta_trust = eta_trust, nSims = nSims,
+                                interp_fraction = interp_fraction,
+                                bisection_iterations = bisection_iterations,
+                                ess_bounds = ess_bounds))
+  }
+  return(trust_step_conjugate(x_0 = x_0, delta = delta, trust_function = trust_function,
+                              eta_trust = eta_trust, nSims = nSims,
+                              subsection_count = subsection_count,
+                              line_iterations = line_iterations,
+                              max.directions = max.directions,
+                              directions = directions,
+                              ess_bounds = ess_bounds))
+}
+
+#' One trust region step by conjugate direction line searches
+#' @description
 #' Iterate from params_sim using importance sampling on the realizations patternSim, simulated from params_sim.
 #' The iteration is restricted to the ball centered on the parameters used for simulation,
 #' with radius equal to the trust region radius.
@@ -32,6 +109,11 @@
 #' behind Powell (1964), and restarting discards it. Restarting also makes every step open
 #' with a line search along free parameter 1, which biases the search toward that
 #' parameter. See \code{\link{trust_region_loop}}'s `carry.directions`.
+#' @param ess_bounds Breakdown bounds to screen against and add to, from
+#' \code{\link{ess_bounds_init}}, or `NULL` to start from scratch. Bounds carried over
+#' from a previous step at the same `x_0` let this one skip points already known to break
+#' the requirement; bounds belonging to any other centre are discarded. See
+#' \code{\link{trust_region_loop}}'s `carry.ess_bounds`.
 #' @param max.directions How many times the conjugate direction set may be updated.
 #' `NULL` restores the original `2*length(x_0) - 1`. The default of 1 keeps only the
 #' first update: a step is then a sweep along the current directions plus one conjugate
@@ -56,9 +138,9 @@
 #' direction set as this step left it, to feed back in through `directions`).
 #'
 #' @export
-trust_step <- function(x_0, delta, trust_function, eta_trust, nSims,
+trust_step_conjugate <- function(x_0, delta, trust_function, eta_trust, nSims,
                        subsection_count = 11, line_iterations = 4, max.directions = 1,
-                       directions = NULL){
+                       directions = NULL, ess_bounds = NULL){
   n <- length(x_0)
   if(subsection_count < 5){
     stop("subsection_count must be at least 5, since each refinement brackets the grid minimum two points out on either side.")
@@ -68,7 +150,7 @@ trust_step <- function(x_0, delta, trust_function, eta_trust, nSims,
   if(is.null(max.directions)){
     max.directions <- 2*n - 1
   }
-  ess_bounds <- ess_bounds_init(x_0)
+  ess_bounds <- ess_bounds_carried(ess_bounds, x_0)
 
   if(n == 1){
     lineRes <- trust_line_steps(p_k = c(1), x_k = x_0, x_0 = x_0, delta = delta,
@@ -331,6 +413,29 @@ ess_bounds_init <- function(x_0){
               upper = rep(Inf, length(x_0)),
               pass_lower = x_0,
               pass_upper = x_0))
+}
+
+#' Breakdown bounds to open a step with
+#' @description
+#' Returns `ess_bounds` when it belongs to this `x_0`, and a fresh set otherwise. The
+#' bounds are offsets measured from the centre of the trust region, so a set carried over
+#' from a different centre describes a different region and is discarded rather than
+#' applied to this one. That is what makes the set safe to carry across a *rejected* step,
+#' where the iterate and the ensemble both stay put, but not across an accepted one.
+#'
+#' @param ess_bounds Bounds from a previous step, or `NULL`.
+#' @param x_0 Centre of the trust region for the step about to run.
+#'
+#' @return An `ess_bounds` list, as \code{\link{ess_bounds_init}} returns.
+ess_bounds_carried <- function(ess_bounds, x_0){
+  usable <- !is.null(ess_bounds) && is.list(ess_bounds) &&
+    !is.null(ess_bounds$x_0) && (length(ess_bounds$x_0) == length(x_0)) &&
+    all(is.finite(ess_bounds$lower) | is.infinite(ess_bounds$lower)) &&
+    isTRUE(all.equal(ess_bounds$x_0, x_0))
+  if(usable){
+    return(ess_bounds)
+  }
+  return(ess_bounds_init(x_0))
 }
 
 #' Record the outcome of one ESS requirement check

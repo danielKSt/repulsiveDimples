@@ -29,7 +29,15 @@ min_contrast_trust_region(
   max.directions.main = NULL,
   max.directions.prefit = 1,
   carry.directions = FALSE,
-  countPrefitLoops = 2,
+  carry.ess_bounds = TRUE,
+  method.main = c("conjugate", "quadratic"),
+  method.prefit = c("conjugate", "quadratic"),
+  interp_fraction.main = 0.25,
+  interp_fraction.prefit = 0.25,
+  bisection_iterations.main = 10,
+  bisection_iterations.prefit = 10,
+  tolPrefitLoops = 0.05,
+  maxPrefitLoops = 6,
   max.iter.prefit = 10,
   tol = 10^-8,
   max.iter = 1000,
@@ -153,12 +161,95 @@ error against the target movement was 0.594 at \code{max.directions = 1} without
 \code{NULL} with}. Hence the default is \code{FALSE}, so that the default \code{max.directions = 1}
 does not silently land in the worst of those four.}
 
-\item{countPrefitLoops}{How many times to repeat the pre-fitting cycle, where one cycle
-is a pure K-function fit of \verb{(log kappa, log omega)} followed by a fit of \verb{log mu}
-alone. Ignored when \code{max.iter.prefit} is 0.}
+\item{carry.ess_bounds}{Keep the parameter values at which the importance sampling was
+seen to break down from one trust region iteration to the next, when the iteration in
+between was \emph{rejected}. A rejected step leaves both the iterate and the ensemble
+untouched, so the region the ensemble supports is exactly the one the previous step
+mapped, and re-deriving it costs evaluations to learn what is already known. Only the
+trust radius has changed. The bounds are dropped whenever a step is accepted, since the
+iterate has moved and a fresh ensemble has been simulated there, and
+\code{\link{ess_bounds_carried}} additionally refuses any set whose centre does not
+match the iterate about to be searched from.
 
-\item{max.iter.prefit}{How many iterations to do at most for the pre-fitting. Set to 0
-(the default) to skip pre-fitting altogether.}
+This is worth much more to \code{method = "quadratic"} than to \code{"conjugate"}. The quadratic
+step opens by bisecting for the breakdown along each coordinate, and carried bounds let
+those searches discard the part of each bracket beyond a crossing already located
+without evaluating there; the conjugate step only screens individual line search points,
+and on a shrunken region most of those were going to be inside the mapped region anyway.
+Re-running a step at the same centre and ensemble with the radius reduced, over 4
+ensembles at \code{nSims = 300}, the evaluations it saved were
+
+\tabular{lrr}{
+\tab quadratic \tab conjugate \cr
+\code{delta} 0.20 to 0.18 \tab 28-35\% \tab 0-2\% \cr
+\code{delta} 0.20 to 0.16 \tab 19-38\% \tab 1-6\% \cr
+\code{delta} 0.20 to 0.10 \tab 0-11\%  \tab 0\%
+}
+
+The gentler the reduction, the more of the previous step's mapping still applies, and
+the more there is to save. A step that halves the radius is searching a region small
+enough that little of what was learned at the old radius bears on it.
+
+It costs nothing in accuracy: the iterate was identical with and without the carried
+bounds in all 24 of those comparisons, and it has to be, since a point the bounds skip
+is one the search would have evaluated and rejected. What carrying changes is only
+whether it is paid for.}
+
+\item{method.main, method.prefit}{Which \code{\link{trust_step}} method to use, for the
+main fit and for the pre-fitting blocks respectively. \code{"conjugate"} (the default, and
+the original behaviour) sweeps conjugate direction line searches in the manner of
+Powell (1964); \code{"quadratic"} fits a quadratic model to a set of interpolation points and
+minimises that, in the manner of UOBYQA (Powell 2002). See \code{\link{trust_step}} for
+what separates them, and \code{\link{trust_step_quadratic}} for what the second one has
+to do about the effective sample size requirement that the first can ignore.
+
+They are split for the same reason the line search settings are: the pre-fitting blocks
+have one and two free parameters, where a quadratic model needs only three and six
+interpolation points, while the main fit has three and needs ten. Nothing has been
+measured about which method suits which phase.}
+
+\item{interp_fraction.main, interp_fraction.prefit}{How much of the supported box
+\code{\link{trust_step_quadratic}} spreads its interpolation points over, for the main
+fit and for the pre-fitting blocks. Ignored when the corresponding \code{method} is
+\code{"conjugate"}. See \code{\link{trust_step_quadratic}}, where this is the argument that
+most affects how good the resulting step is.}
+
+\item{bisection_iterations.main, bisection_iterations.prefit}{Bisection steps per ray
+search inside \code{\link{trust_step_quadratic}}, for the main fit and for the
+pre-fitting blocks. Ignored when the corresponding \code{method} is \code{"conjugate"}.}
+
+\item{tolPrefitLoops}{Stop pre-fitting once one full cycle moves the parameters by less
+than this, and go on to the main fit for the final adjustments. The distance is
+Euclidean, on the log scale the optimizer works on, taken over every coordinate in
+\code{parFreeIndex} between the vector entering the cycle and the vector leaving it. Set to 0
+to disable the check and always run \code{maxPrefitLoops} cycles.
+
+Pre-fitting is a block-coordinate warm start, so the useful question is whether it is
+still making progress, not whether it has converged; a tolerance is the natural way to
+ask that, since the cycles settle geometrically and a fixed count cannot know where.
+Measured over study1's saved fits (200 fits per ensemble size, four cycles each), the
+median distance moved per cycle ran 0.93, 0.21, 0.08, 0.03 at \code{nSims = 10000} and
+0.88, 0.25, 0.13, 0.07 at \code{nSims = 500}. Replaying this rule over those same movements,
+the default of 0.05 stops at cycle 3 or 4 for 86\% of fits at \code{nSims = 10000} (14\% and
+72\%) and 83\% at \code{nSims = 5000} (27\% and 56\%), leaving the rest to \code{maxPrefitLoops}.
+
+Two things to watch. A small ensemble makes the blocks noisy enough to stop early by
+accident: at \code{nSims = 500} the same tolerance ends 3\% of fits after the \emph{first} cycle
+and another 5\% after the second, which at a median first-cycle movement of 0.88 is
+plainly the noise and not a settled fit. And tightening much below 0.01 is not useful
+in the other direction, because by then the cycle-to-cycle movement is the sampling
+error of the block fits rather than progress, so the tolerance simply never fires and
+\code{maxPrefitLoops} decides after all.}
+
+\item{maxPrefitLoops}{Most pre-fitting cycles to run, where one cycle is a pure
+K-function fit of \verb{(log kappa, log omega)} followed by a fit of \verb{log mu} alone. This is
+a cap on \code{tolPrefitLoops} rather than the usual stopping rule, and the default of 6 sits
+above where that tolerance normally fires so that it rarely binds -- on study1 it would
+have caught the 14\% of fits at \code{nSims = 10000} that the tolerance did not. Ignored when
+\code{max.iter.prefit} is 0.}
+
+\item{max.iter.prefit}{How many iterations to do at most inside each pre-fitting block.
+Set to 0 to skip pre-fitting altogether.}
 
 \item{tol}{Convergence tolerance}
 
@@ -169,9 +260,16 @@ alone. Ignored when \code{max.iter.prefit} is 0.}
 \value{
 A list with \code{params} (the matrix of iterates, one row per step),
 \code{f_vals} (the contrast value at each iterate), \code{update_evals} (the per-step
-\code{\link{trust_step}} and \code{\link{evaluate_improvement}} output), and
+\code{\link{trust_step}} and \code{\link{evaluate_improvement}} output),
 \code{prefitResults} (the same three quantities for each pre-fitting block, or \code{NULL}
-when no pre-fitting was done).
+when no pre-fitting was done), and \code{prefitMoves} (the distance each pre-fitting cycle
+moved the parameters, the series \code{tolPrefitLoops} is tested against).
+
+\code{prefitResults} and \code{prefitMoves} are trimmed to the number of cycles that actually
+ran, so \code{length(prefitMoves)} is that count and its last entry says which rule stopped
+the pre-fitting: below \code{tolPrefitLoops} means the tolerance fired, at or above it means
+\code{maxPrefitLoops} bound. Fits in the same study can therefore carry different numbers of
+pre-fitting cycles, which is worth remembering when tabulating them by cycle.
 }
 \description{
 Minimum contrast estimation using a derivative-free trust region approach. Each
@@ -183,6 +281,7 @@ to accept the step (see \code{\link{evaluate_improvement}}).
 
 Before the main fit, the parameters can optionally be pre-fitted in blocks: first
 \verb{(log kappa, log omega)} against the K-function alone, then \verb{log mu} against the full
-contrast function. This is repeated \code{countPrefitLoops} times, and is skipped entirely
-when \code{max.iter.prefit} is 0.
+contrast function. That cycle repeats until it stops moving the parameters -- until one
+cycle shifts them by less than \code{tolPrefitLoops} -- or until \code{maxPrefitLoops} cycles have
+run, whichever comes first. Pre-fitting is skipped entirely when \code{max.iter.prefit} is 0.
 }
