@@ -1,62 +1,108 @@
 
 library(ggplot2)
+library(viridis)
+library(dplyr)
+library(patchwork)
 library(repulsiveDimples)
-setwd("/Users/danielks/Library/CloudStorage/OneDrive-NTNU/PhD/Aalborg/repulsiveDimples/simulation_studies/")
+setwd("/Users/danielks/Library/CloudStorage/OneDrive-NTNU/PhD/Aalborg/repulsiveDimples/simulation_studies/Importance_sampling/")
 
-load("study3a.RDa")
+source("R_scripts/is_analysis_helpers.R")
+load("Results/study4.RDa")
 
-# Helper functions: ----
-calc_K_diff <- function(K_true, case, q = 1/4){
-  K_norm <- case$res_is$K_is_norm
-  K_unnorm <- case$res_is$K_is
-  dr <- K_true$r[2] - K_true$r[1]
-  diff_norm <- c(1:length(K_norm))
-  diff_unnorm <- c(1:length(K_unnorm))
-  for(i in 1:length(K_norm)){
-    diff_norm[i] <- sum((K_true$border^q - K_norm[[i]]$border^q)^2)*dr
-    diff_unnorm[i] <- sum((K_true$border^q - K_unnorm[[i]]$border^q)^2)*dr
-  }
-  K_base <- case$res_is$K_base
-  diff_base <- sum((K_true$border^q - K_base$border^q)^2)*dr
-  return(list(normalized = diff_norm,
-              unnormalized = diff_unnorm,
-              base = diff_base))
-}
+# Simple convergence plots: ----
 
-# Basic study: ----
+group <- simStudyResults[[1]]
+kappas <- sapply(group$res_cases, function(case) case$par_0$kappa)
+kappasLogDiff <- group$par_goal$kappa - kappas
+cases <- intersect(which(abs(kappasLogDiff) > 0.001), which(abs(kappasLogDiff) < 0.3))
 
-group_nr <- 2
 
-group <- simStudyResults[[group_nr]]
-res_true <- group$res_true
+res <- df_convergence_results_complete(group = group, basecase_ind = 1, nSamplesMin = 200)
 
-case_nr <- 6
-case <- group$res_cases[[case_nr]]
-print(exp(group$par_goal))
-print(exp(case$par_0))
+res_kappa <- res |>
+  filter(abs(kappasLogDiff) > 0.001) |>
+  filter(abs(kappasLogDiff) < 0.3)
 
-# Intensity
-ymax <- max(c(res_true$rho_true, case$res_is$rho_is, case$res_is$rho_is_norm, case$res_is$rho_base))*1.1
-ymin <- min(c(res_true$rho_true, case$res_is$rho_is, case$res_is$rho_is_norm, case$res_is$rho_base))*0.9
 
-plot(x = log(group$nSamples), y = case$res_is$rho_is_norm, type = "l",
-     ylim = c(ymin,ymax))
-lines(x = log(group$nSamples), y = case$res_is$rho_is, lty = 2)
-abline(h = res_true$rho_true, col = "red")
-abline(h = case$res_is$rho_base, col = "purple")
+rho_norm <- ggplot(data = res_kappa, aes(x = log(nSamples), y = rho_is_norm, group = case_ind, colour = kappasLogDiff)) +
+  geom_line() +
+  geom_hline(yintercept = group$res_true$rho_true, linetype = "dashed", colour = "red") +
+  scale_color_viridis_c(name = bquote("log difference in " * kappa), option = "H") +
+  ylab(bquote(hat(rho)[Norm])) +
+  ylim(c(0.9, 1.15))
 
-# K-function
-K_diff <- calc_K_diff(res_true$K_true, case)
+rho_unnorm <- ggplot(data = res_kappa, aes(x = log(nSamples), y = rho_is, group = case_ind, colour = kappasLogDiff)) +
+  geom_line() +
+  geom_hline(yintercept = group$res_true$rho_true, linetype = "dashed", colour = "red") +
+  scale_color_viridis_c(name = bquote("log difference in " * kappa), option = "H") +
+  ylab(bquote(hat(rho)[Unnorm])) +
+  ggtitle(bquote("Estimates for " * rho * ", with " *
+                   kappa * " = " * .(round(exp(group$par_goal$kappa), digits = 6)) * ", "  *
+                   sigma^2 * " = " * .(round(exp(group$par_goal$omega), digits = 6)) * ", " *
+                   mu * " = " * .(round(exp(group$par_goal$mu), digits = 6)))) +
+  ylim(c(0.9, 1.15))
 
-print(K_diff$base)
-plot(x = log(group$nSamples), y = K_diff$normalized, type = "l")
-lines(x = log(group$nSamples), y = K_diff$unnormalized, lty = 2)
-abline(h = K_diff$base, col = "red")
+rho_plot <- rho_unnorm + rho_norm + plot_layout(guides = "collect")
 
-plot(x = res_true$K_true$r, y = res_true$K_true$border^0.25, type = "l")
-lines(x = res_true$K_true$r, y = case$res_is$K_base$border^0.25, col = "red")
-lines(x = res_true$K_true$r, y = case$res_is$K_is[[13]]$border^0.25, col = "purple", lty = 2)
-lines(x = res_true$K_true$r, y = case$res_is$K_is_norm[[13]]$border^0.25, col = "orange", lty = 2)
+K_unnorm <- ggplot(data = res_kappa, aes(x = log(nSamples), y = K_diff, group = case_ind, colour = kappasLogDiff)) +
+  geom_line() +
+  scale_color_viridis_c(name = bquote("log difference in " * kappa), option = "H") +
+  ylab(bquote(hat(K)[Unnorm])) +
+  ylim(c(0,0.007)) +
+  ggtitle(bquote("Estimates for " *
+                   kappa * " = " * .(round(exp(group$par_goal$kappa), digits = 6)) * ", "  *
+                   sigma^2 * " = " * .(round(exp(group$par_goal$omega), digits = 6)) * ", " *
+                   mu * " = " * .(round(exp(group$par_goal$mu), digits = 6))))
+
+K_norm <- ggplot(data = res_kappa, aes(x = log(nSamples), y = K_diff_norm, group = case_ind, colour = kappasLogDiff)) +
+  geom_line() +
+  scale_color_viridis_c(name = bquote("log difference in " * kappa), option = "H") +
+  ylab(bquote(hat(K)[Norm])) +
+  ylim(c(0,0.007))
+
+K_plot <- K_unnorm + K_norm + plot_layout(guides = "collect")
+
+plotFolder <- "/Users/danielks/Library/CloudStorage/OneDrive-NTNU/PhD/Aalborg/presentasjonar/figs/is_sim_studies/"
+ggsave(
+  filename = paste(plotFolder, "study4_group1_rho.pdf", sep = ""),
+  plot     = rho_plot,
+  width    = 32, height = 16,
+  units    = "cm",
+  device   = cairo_pdf,
+  bg       = "transparent"
+)
+
+ggsave(
+  filename = paste(plotFolder, "study4_group1_K.pdf", sep = ""),
+  plot     = K_plot,
+  width    = 32, height = 16,
+  units    = "cm",
+  device   = cairo_pdf,
+  bg       = "transparent"
+)
+
+
+res_sigma <- res |>
+  filter(abs(sigmasqsLogDiff) > 0.001) |>
+  filter(abs(sigmasqsLogDiff) < 0.3)
+
+ggplot(data = res_sigma, aes(x = log(nSamples), y = rho_is_norm, group = case_ind, colour = sigmasqsLogDiff)) +
+  geom_line() +
+  geom_hline(yintercept = group$res_true$rho_true, linetype = "dashed", colour = "red") +
+  scale_color_viridis_c(name = bquote("log difference in " * kappa), option = "H") +
+  ylab(bquote(hat(rho)[Norm])) +
+  ylim(c(0.9, 1.15))
+
+res_mu <- res |>
+  filter(abs(musLogDiff) > 0.001) |>
+  filter(abs(musLogDiff) < 0.3)
+
+ggplot(data = res_mu, aes(x = log(nSamples), y = rho_is_norm, group = case_ind, colour = musLogDiff)) +
+  geom_line() +
+  geom_hline(yintercept = group$res_true$rho_true, linetype = "dashed", colour = "red") +
+  scale_color_viridis_c(name = bquote("log difference in " * kappa), option = "H") +
+  ylab(bquote(hat(rho)[Norm])) +
+  ylim(c(0.9, 1.15))
 
 # Look at effective sample size
 ess <- 1/sum((case$res_is$w_is/sum(case$res_is$w_is))^2)
