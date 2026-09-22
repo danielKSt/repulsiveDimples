@@ -16,7 +16,9 @@ K_est.unions(
 )
 }
 \arguments{
-\item{points_input}{List of point patterns used for estimation}
+\item{points_input}{List of point patterns used for estimation. Each element is a
+\code{data.frame} with columns \code{x} and \code{y} in observation window coordinates, that is in
+\verb{[0, l]}, or a bare number for a snapshot holding no points.}
 
 \item{l}{Side length of observation window}
 

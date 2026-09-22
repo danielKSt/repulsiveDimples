@@ -2,7 +2,7 @@
 % Please edit documentation in R/estimation.R
 \name{pcf_est.unions}
 \alias{pcf_est.unions}
-\title{Function for estimating the K-function given a list of point patterns
+\title{Function for estimating the pair correlation function given a list of point patterns
 The point patterns are assumed to come from a time series of point patterns}
 \usage{
 pcf_est.unions(
@@ -18,7 +18,9 @@ pcf_est.unions(
 )
 }
 \arguments{
-\item{points_input}{List of point patterns used for estimation}
+\item{points_input}{List of point patterns used for estimation. Each element is a
+\code{data.frame} with columns \code{x} and \code{y} in observation window coordinates, that is in
+\verb{[0, l]}, or a bare number for a snapshot holding no points.}
 
 \item{bw}{Estimation bandwidth}
 
@@ -37,6 +39,6 @@ pcf_est.unions(
 \item{zerocor}{See pcf.ppp documentation from spatstat}
 }
 \description{
-Function for estimating the K-function given a list of point patterns
+Function for estimating the pair correlation function given a list of point patterns
 The point patterns are assumed to come from a time series of point patterns
 }
