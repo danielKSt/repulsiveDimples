@@ -11,3 +11,6 @@ simulation_studies/*.html
 
 # testthat writes these when a test file errors
 tests/testthat/_problems/
+
+# TeX write-up of the algorithms, plus everything latexmk generates alongside it
+notes/
