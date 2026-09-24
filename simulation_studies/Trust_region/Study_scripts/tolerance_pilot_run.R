@@ -30,7 +30,7 @@ library(parallel)
 library(mcprogress)
 library(repulsiveDimples)
 
-source("simulation_studies/Trust_region/study_run_helpers.R")
+source("simulation_studies/Trust_region/Helper_scripts/study_run_helpers.R")
 dir.create(resFolder, showWarnings = FALSE, recursive = TRUE)
 
 load(file = "simulation_studies/Trust_region/Data/study1.RDa")

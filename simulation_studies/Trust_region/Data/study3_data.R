@@ -1,5 +1,5 @@
 
-source(file = "simulation_studies/Trust_region/simStud_helpers_trust.R")
+source(file = "simulation_studies/Trust_region/Helper_scripts/simStud_helpers_trust.R")
 
 
 # Parameters:

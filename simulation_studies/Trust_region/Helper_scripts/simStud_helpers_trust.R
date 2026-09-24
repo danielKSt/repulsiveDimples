@@ -1,9 +1,11 @@
 # Load libraries
-library(spatstat)
-library(ggplot2)
-library(parallel)
-library(mcprogress)
-library(repulsiveDimples)
+suppressPackageStartupMessages({
+  library(spatstat)
+  library(ggplot2)
+  library(parallel)
+  library(mcprogress)
+  library(repulsiveDimples)
+})
 
 generate_data <- function(sidelength, sim_pars, r_vec){
   pattern <- rThomas_matern_thinned(kappa = sim_pars$kappa,

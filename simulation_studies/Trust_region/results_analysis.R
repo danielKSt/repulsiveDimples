@@ -2,7 +2,7 @@ library(spatstat)
 library(ggplot2)
 library(repulsiveDimples)
 
-source(file = "simulation_studies/Trust_region/results_analysis_helpers.R")
+source(file = "simulation_studies/Trust_region/Helper_scripts/results_analysis_helpers.R")
 
 studyNr <- 1
 
