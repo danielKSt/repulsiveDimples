@@ -366,6 +366,20 @@ quadratic_interp_set <- function(x_0, box, delta, trust_function, eta_trust, nSi
   }
   rownames(S) <- NULL
 
+  # The box is capped at `delta` along each axis, which bounds the axial points but not the
+  # pair points: one sits at a corner (h_i, h_j) of the box, at a distance of up to
+  # sqrt(2) times the per-axis extent. Above an interp_fraction of 1/sqrt(2) that corner
+  # can lie outside the trust region, and since the step returns the best point it has
+  # evaluated, it could return one of them -- measured, 20 of 300 steps at a fraction of
+  # 0.75 and 38 of 300 at 1.0. So any point outside the ball is scaled back onto it along
+  # its own ray from x_0, the same kind of move the ESS repair makes. At the default of
+  # 0.25 the largest pair point is about 0.35 * delta, so this never fires there.
+  norms <- sqrt(rowSums(S^2))
+  outside <- norms > delta
+  if(any(outside)){
+    S[outside, ] <- S[outside, , drop = FALSE] * (delta/norms[outside])
+  }
+
   f <- rep(NA_real_, nrow(S))
   # Free coordinate 2 is omega whenever the free set starts at log kappa, which covers
   # both the main fit and the K-function block. On any other subset this groups by

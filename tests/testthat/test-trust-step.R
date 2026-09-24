@@ -60,16 +60,25 @@ test_that("the line search falls back on x_k when the whole line is ruled out", 
   expect_equal(res$x, c(0.5, 0))
 })
 
-test_that("trust_step keeps its iterate inside the trust region", {
-  set.seed(3)
-  for (i in 1:25) {
-    n <- sample(1:3, 1)
-    centre <- rnorm(n, sd = 3)
-    x0 <- rnorm(n, sd = 0.3)
-    delta <- runif(1, 0.05, 1.5)
-    r <- trust_step(x0, delta, quad(centre, function(x) 100), eta_trust = 0,
-                    nSims = 100, max.directions = NULL)
-    expect_lte(sqrt(sum((r$x_star - x0)^2)), delta * (1 + 1e-8))
+test_that("trust_step keeps its iterate inside the trust region, under either method", {
+  # A property of any trust step, so both methods are held to it. The quadratic step at
+  # interp_fraction = 1 is here on purpose: its pair interpolation points sit at box
+  # corners up to sqrt(2) times the per-axis extent out, and before 2026-09-24 it could
+  # return one of them from outside the ball.
+  cfgs <- list(list(method = "conjugate", max.directions = NULL),
+               list(method = "quadratic"),
+               list(method = "quadratic", interp_fraction = 1))
+  for (cfg in cfgs) {
+    set.seed(3)
+    for (i in 1:25) {
+      n <- sample(1:3, 1)
+      centre <- rnorm(n, sd = 3)
+      x0 <- rnorm(n, sd = 0.3)
+      delta <- runif(1, 0.05, 1.5)
+      r <- do.call(trust_step, c(list(x0, delta, quad(centre, function(x) 100),
+                                      eta_trust = 0, nSims = 100), cfg))
+      expect_lte(sqrt(sum((r$x_star - x0)^2)), delta * (1 + 1e-8))
+    }
   }
 })
 
