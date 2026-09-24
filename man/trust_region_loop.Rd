@@ -27,7 +27,7 @@ trust_region_loop(
   max.directions = 1,
   carry.directions = FALSE,
   carry.ess_bounds = TRUE,
-  method = c("conjugate", "quadratic"),
+  method = c("quadratic", "conjugate"),
   interp_fraction = 0.25,
   bisection_iterations = 10,
   tol = 10^-8,
@@ -192,8 +192,10 @@ bounds in all 24 of those comparisons, and it has to be, since a point the bound
 is one the search would have evaluated and rejected. What carrying changes is only
 whether it is paid for.}
 
-\item{method}{Which \code{\link{trust_step}} method to use, \code{"conjugate"} (the
-default, and the original behaviour) or \code{"quadratic"}. See \code{\link{trust_step}}.}
+\item{method}{Which \code{\link{trust_step}} method to use, \code{"quadratic"} (the
+default) or \code{"conjugate"} (the original method, and the default until 2026-09-24). See
+\code{\link{trust_step}}. \code{subsection_count}, \code{line_iterations}, \code{max.directions} and
+\code{carry.directions} only apply to the conjugate step.}
 
 \item{interp_fraction}{How much of the supported box
 \code{\link{trust_step_quadratic}} spreads its interpolation points over. Ignored when

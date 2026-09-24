@@ -67,7 +67,8 @@ test_that("fixed parameters are left alone", {
 })
 
 test_that("carry.directions runs end to end and does not disturb the bookkeeping", {
-  res <- run_loop(eta_trust = 0.5, eta_converged = 0.99, max.iter = 4,
+  # Direction carrying only exists in the conjugate step, which is no longer the default.
+  res <- run_loop(eta_trust = 0.5, eta_converged = 0.99, max.iter = 4, method = "conjugate",
                   max.directions = NULL, carry.directions = TRUE)
   expect_equal(nrow(res$x_seq), length(res$f_vals))
   expect_true(all(is.finite(res$f_vals)))

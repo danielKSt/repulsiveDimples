@@ -113,12 +113,19 @@
 #' fresh 400-pattern ensemble, `max.directions = 1` averaged a contrast of 1.83 against
 #' 0.91 for `NULL` -- about twice the error for about a twelfth of the runtime.
 #' @param method.main,method.prefit Which \code{\link{trust_step}} method to use, for the
-#' main fit and for the pre-fitting blocks respectively. `"conjugate"` (the default, and
-#' the original behaviour) sweeps conjugate direction line searches in the manner of
-#' Powell (1964); `"quadratic"` fits a quadratic model to a set of interpolation points and
-#' minimises that, in the manner of UOBYQA (Powell 2002). See \code{\link{trust_step}} for
-#' what separates them, and \code{\link{trust_step_quadratic}} for what the second one has
-#' to do about the effective sample size requirement that the first can ignore.
+#' main fit and for the pre-fitting blocks respectively. `"quadratic"` (the default) fits
+#' a quadratic model to a set of interpolation points and minimises that, in the manner of
+#' UOBYQA (Powell 2002); `"conjugate"` (the original method, and the default until
+#' 2026-09-24) sweeps conjugate direction line searches in the manner of Powell (1964).
+#' See \code{\link{trust_step}} for what separates them and for the paired comparison the
+#' default rests on -- in short, the quadratic step is about five times cheaper and ahead
+#' at equal cost, while the conjugate step reaches a lower error at large `nSims` if the
+#' compute is there -- and \code{\link{trust_step_quadratic}} for what it has to do about
+#' the effective sample size requirement that the conjugate step can ignore.
+#'
+#' The line search settings (`subsection_count.*`, `line_iterations.*`,
+#' `max.directions.*`) and `carry.directions` only apply to the conjugate step, and do
+#' nothing at the default.
 #'
 #' They are split for the same reason the line search settings are: the pre-fitting blocks
 #' have one and two free parameters, where a quadratic model needs only three and six
@@ -228,8 +235,8 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
                                       line_iterations.main = 4, line_iterations.prefit = 4,
                                       max.directions.main = NULL, max.directions.prefit = 1,
                                       carry.directions = FALSE, carry.ess_bounds = TRUE,
-                                      method.main = c("conjugate", "quadratic"),
-                                      method.prefit = c("conjugate", "quadratic"),
+                                      method.main = c("quadratic", "conjugate"),
+                                      method.prefit = c("quadratic", "conjugate"),
                                       interp_fraction.main = 0.25,
                                       interp_fraction.prefit = 0.25,
                                       bisection_iterations.main = 10,
@@ -488,8 +495,10 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
 #' bounds in all 24 of those comparisons, and it has to be, since a point the bounds skip
 #' is one the search would have evaluated and rejected. What carrying changes is only
 #' whether it is paid for.
-#' @param method Which \code{\link{trust_step}} method to use, `"conjugate"` (the
-#' default, and the original behaviour) or `"quadratic"`. See \code{\link{trust_step}}.
+#' @param method Which \code{\link{trust_step}} method to use, `"quadratic"` (the
+#' default) or `"conjugate"` (the original method, and the default until 2026-09-24). See
+#' \code{\link{trust_step}}. `subsection_count`, `line_iterations`, `max.directions` and
+#' `carry.directions` only apply to the conjugate step.
 #' @param interp_fraction How much of the supported box
 #' \code{\link{trust_step_quadratic}} spreads its interpolation points over. Ignored when
 #' `method` is `"conjugate"`.
@@ -523,7 +532,7 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
                               eta_converged = 0.99, validate.converged = FALSE,
                               subsection_count = 11, line_iterations = 4, max.directions = 1,
                               carry.directions = FALSE, carry.ess_bounds = TRUE,
-                              method = c("conjugate", "quadratic"),
+                              method = c("quadratic", "conjugate"),
                               interp_fraction = 0.25, bisection_iterations = 10,
                               tol = 10^-8, max.iter = 1000, printProgress = FALSE,
                               label = "trust region"){

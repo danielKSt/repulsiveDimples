@@ -14,7 +14,8 @@
 #' `"conjugate"` sweeps a set of line searches in the manner of Powell (1964), building
 #' conjugate directions as it goes. A point it cannot support is simply dropped from the
 #' line it was found on and the search carries on, so the requirement costs it nothing
-#' beyond the evaluation. This is the original method and remains the default.
+#' beyond the evaluation. This is the original method, and was the default until
+#' 2026-09-24.
 #'
 #' `"quadratic"` fits a quadratic model to the contrast on a set of interpolation points
 #' and minimises that, in the manner of UOBYQA (Powell 2002). It cannot drop a point --
@@ -22,13 +23,31 @@
 #' region the ensemble supports by bisecting along each coordinate, and places its points
 #' inside what it finds. It spends far fewer evaluations than a conjugate step with
 #' `max.directions = NULL`, and unlike a line search it uses the curvature of the contrast
-#' rather than only its values along a line.
+#' rather than only its values along a line. This is the default.
 #'
-#' Which is better on a given fit has not been measured, and the two have different
-#' failure modes: the conjugate step degrades gracefully into a cruder search when the
-#' region is awkward, while the quadratic step depends on an interpolation set that the
-#' region has not deformed too badly, and falls back on the best point it evaluated when
-#' it has.
+#' Measured on study1 with 200 paired fits at each of four ensemble sizes -- same seeds,
+#' same starting point, same pre-fitting -- the quadratic step is 4.1 to 5.1 times
+#' cheaper in CPU across the range, and 5.0 times over the whole study. Its accuracy
+#' matches or beats the conjugate step up to `nSims = 1000`: at 500 it is better and much
+#' less erratic (spread 0.138 against 0.242, where one conjugate fit ended more than 1.0
+#' out in log space). Above that it falls behind, significantly at 10000, where the median
+#' error in log parameters is 0.044 against 0.030. That gap is variance rather than bias:
+#' at 5000 and 10000 the quadratic step is actually the less biased of the two (0.0125
+#' against 0.0243 at 10000), but its spread stops shrinking between those sizes while the
+#' conjugate step's keeps falling.
+#'
+#' Compared at equal cost rather than equal `nSims`, which is the fair comparison when one
+#' method is five times cheaper, the quadratic step is ahead for any budget up to about
+#' 2000 s a fit -- the conjugate step at 1000 costs what the quadratic step does at 5000,
+#' and reaches 0.074 against 0.046. That is why it is the default. The conjugate step is
+#' worth its price only when the last of the accuracy matters and five times the compute
+#' is affordable; because the quadratic step's spread plateaus, it cannot reach the
+#' conjugate step's best at any ensemble size.
+#'
+#' The two also fail differently. The conjugate step degrades gracefully into a cruder
+#' search when the region is awkward, while the quadratic step depends on an
+#' interpolation set that the region has not deformed too badly, and falls back on the
+#' best point it evaluated when it has.
 #'
 #' @param x_0 Parameter values used to simulate patternSim
 #' @param delta Trust region radius
@@ -37,7 +56,7 @@
 #' size of the importance sampling weights behind it).
 #' @param eta_trust Smallest `ess/nSims` an iterate is allowed to have, between 0 and 1.
 #' @param nSims Number of simulations the ensemble behind `trust_function` holds.
-#' @param method Which method to use, `"conjugate"` or `"quadratic"`.
+#' @param method Which method to use, `"quadratic"` (the default) or `"conjugate"`.
 #' @param subsection_count,line_iterations,max.directions,directions Passed to
 #' \code{\link{trust_step_conjugate}}, and ignored by the quadratic method.
 #' @param interp_fraction,bisection_iterations Passed to
@@ -54,7 +73,7 @@
 #'
 #' @export
 trust_step <- function(x_0, delta, trust_function, eta_trust, nSims,
-                       method = c("conjugate", "quadratic"),
+                       method = c("quadratic", "conjugate"),
                        subsection_count = 11, line_iterations = 4, max.directions = 1,
                        directions = NULL, interp_fraction = 0.25,
                        bisection_iterations = 10, ess_bounds = NULL){

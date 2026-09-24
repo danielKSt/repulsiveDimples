@@ -164,9 +164,8 @@ test_that("trust_step dispatches on method and both methods return the same shap
     expect_true(nm %in% names(b))
   }
   expect_error(trust_step(rep(0, 3), 0.2, tf, 0.5, 100, method = "nonsense"))
-  # Default is the original method, so existing calls are unaffected.
-  expect_equal(trust_step(rep(0, 3), 0.2, tf, 0.5, 100, subsection_count = 5,
-                          line_iterations = 1)$x_star, a$x_star)
+  # The default has been the quadratic step since 2026-09-24.
+  expect_equal(trust_step(rep(0, 3), 0.2, tf, 0.5, 100)$x_star, b$x_star)
 })
 
 test_that("carried bounds are used at the same centre and discarded at any other", {

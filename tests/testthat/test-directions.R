@@ -4,6 +4,10 @@
 
 dsi <- repulsiveDimples:::direction_set_init
 
+# Direction sets only exist in the conjugate step, so every trust_step call below asks for
+# it by name. The default has been the quadratic step since 2026-09-24, and without the
+# pin these would silently run a method that returns no direction set at all.
+
 test_that("direction_set_init falls back to the axes on anything unusable", {
   expect_equal(dsi(NULL, 3), diag(3))
   expect_equal(dsi(diag(2), 3), diag(3))                                   # wrong shape
@@ -22,7 +26,7 @@ test_that("trust_step returns a direction set its own guard accepts", {
   set.seed(5)
   tf <- function(x) list(f_est = as.numeric(crossprod(x - c(2, 1)) +
                                              0.5 * (x[1] - 2) * (x[2] - 1)), ess = 100)
-  r <- trust_step(c(0, 0), 0.5, tf, eta_trust = 0, nSims = 100, max.directions = NULL)
+  r <- trust_step(c(0, 0), 0.5, tf, eta_trust = 0, nSims = 100, method = "conjugate", max.directions = NULL)
   expect_true(is.matrix(r$directions))
   expect_equal(dim(r$directions), c(2L, 2L))
   expect_equal(dsi(r$directions, 2), r$directions)
@@ -32,9 +36,9 @@ test_that("a carried set is actually used, and an uncarried one is not", {
   # Feeding a rotated set in must change the first direction searched, and so the path.
   tf <- function(x) list(f_est = as.numeric(crossprod(x - c(2, 1))), ess = 100)
   rot <- matrix(c(0, 1, 1, 0), 2, 2)             # swaps which parameter is searched first
-  a <- trust_step(c(0, 0), 0.3, tf, eta_trust = 0, nSims = 100,
+  a <- trust_step(c(0, 0), 0.3, tf, eta_trust = 0, nSims = 100, method = "conjugate",
                   max.directions = 1, directions = NULL)
-  b <- trust_step(c(0, 0), 0.3, tf, eta_trust = 0, nSims = 100,
+  b <- trust_step(c(0, 0), 0.3, tf, eta_trust = 0, nSims = 100, method = "conjugate",
                   max.directions = 1, directions = rot)
   expect_false(isTRUE(all.equal(a$x_star, b$x_star)))
 })
@@ -49,7 +53,7 @@ test_that("the stored direction is a unit vector", {
   dirs <- NULL
   x <- c(0, 0)
   for (i in 1:5) {
-    r <- trust_step(x, 0.3, tf, eta_trust = 0, nSims = 100,
+    r <- trust_step(x, 0.3, tf, eta_trust = 0, nSims = 100, method = "conjugate",
                     max.directions = NULL, directions = dirs)
     x <- r$x_star
     dirs <- r$directions
@@ -69,7 +73,7 @@ test_that("carrying reaches a correlated quadratic's minimum no worse, and no de
     x <- c(0, 0, 0); dirs <- NULL
     for (i in 1:6) {
       r <- trust_step(x, 0.4, function(z) { n <<- n + 1; list(f_est = fq(z), ess = 100) },
-                      eta_trust = 0, nSims = 100, max.directions = NULL,
+                      eta_trust = 0, nSims = 100, method = "conjugate", max.directions = NULL,
                       directions = if (carry) dirs else NULL)
       x <- r$x_star
       if (carry) dirs <- r$directions

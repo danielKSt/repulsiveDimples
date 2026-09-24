@@ -82,21 +82,25 @@ test_that("trust_step keeps its iterate inside the trust region, under either me
   }
 })
 
-test_that("trust_step respects eta_trust at the iterate it returns", {
+test_that("trust_step respects eta_trust at the iterate it returns, under either method", {
   nSims <- 100
   tf <- quad(c(3, 3), function(x) nSims * exp(-8 * abs(x[1]) - 0.2 * abs(x[2])))
-  for (eta in c(0.3, 0.6, 0.8)) {
-    r <- trust_step(c(0, 0), 0.5, tf, eta_trust = eta, nSims = nSims)
-    expect_gt(r$ess_star / nSims, eta)
+  for (meth in c("quadratic", "conjugate")) {
+    for (eta in c(0.3, 0.6, 0.8)) {
+      r <- trust_step(c(0, 0), 0.5, tf, eta_trust = eta, nSims = nSims, method = meth)
+      expect_gt(r$ess_star / nSims, eta)
+    }
   }
 })
 
 test_that("subsection_count below 5 is rejected rather than indexing off the grid", {
   expect_error(trust_step(c(0, 0), 1, quad(c(1, 1), function(x) 100),
-                          eta_trust = 0, nSims = 100, subsection_count = 4),
+                          eta_trust = 0, nSims = 100, subsection_count = 4,
+                          method = "conjugate"),
                "at least 5")
   expect_silent(trust_step(c(0, 0), 1, quad(c(1, 1), function(x) 100),
-                           eta_trust = 0, nSims = 100, subsection_count = 5))
+                           eta_trust = 0, nSims = 100, subsection_count = 5,
+                           method = "conjugate"))
 })
 
 test_that("cost stays within the documented cap", {
@@ -105,7 +109,7 @@ test_that("cost stays within the documented cap", {
   for (cfg in list(c(11, 4, 5), c(11, 4, 1), c(7, 2, 2))) {
     n_eval <- 0
     tf <- function(x) { n_eval <<- n_eval + 1; list(f_est = sum(x^2), ess = 100) }
-    trust_step(c(0, 0, 0), 1, tf, eta_trust = 0, nSims = 100,
+    trust_step(c(0, 0, 0), 1, tf, eta_trust = 0, nSims = 100, method = "conjugate",
                subsection_count = cfg[1], line_iterations = cfg[2], max.directions = cfg[3])
     expect_lte(n_eval, (1 + cfg[3] * 4) * (cfg[2] + 1) * cfg[1] + 1)
   }
@@ -114,7 +118,7 @@ test_that("cost stays within the documented cap", {
 test_that("a one-parameter step uses the finer grid the defaults have always paired with it", {
   n_eval <- 0
   tf <- function(x) { n_eval <<- n_eval + 1; list(f_est = (x - 0.3)^2, ess = 100) }
-  trust_step(0, 1, tf, eta_trust = 0, nSims = 100,
+  trust_step(0, 1, tf, eta_trust = 0, nSims = 100, method = "conjugate",
              subsection_count = 11, line_iterations = 4)
   expect_equal(n_eval, 5 * 13 + 1)     # subsection_count + 2, over iterations + 1 rounds
 })
