@@ -20,11 +20,12 @@
 # far above it, the optimizer is not the binding constraint on real data and the
 # recommendation to prefer the cheaper method follows. If it is close, it does not.
 #
-# m = 1 is deliberately excluded: K_est.unions is wrong for a single snapshot. Its two
-# loops run `1:(length(snapshots)-1)` and `(t_first+1):length(snapshots)`, which count
-# backwards when there is one snapshot, so the pattern is duplicated and an empty window is
-# unioned in. Measured: K(1.0) comes back as 9.148 against 3.824 at m = 5, with a
-# "data contain duplicated points" warning. Fix that before reading anything into m = 1.
+# m = 1 is the case that matters most: a single snapshot is the commonest real-data
+# situation, and the one where estimating the targets costs the most. It relies on
+# K_est.unions handling one snapshot, which it did not before 38c3e82 -- two of its loops
+# counted backwards, duplicating the pattern and giving K(1.0) = 9.148 where the same data
+# at m = 5 gives 3.824. Checked after the fix: at m = 1 it now agrees exactly with a
+# direct Kest on that snapshot.
 
 library(spatstat)
 library(parallel)
@@ -38,7 +39,7 @@ load(file = "simulation_studies/Trust_region/Data/study1.RDa")
 r_vec   <- seq(from = 0, to = 3, by = 0.05)   # the grid study1's K_hat is on
 spacing <- 5                                  # as in Data/study1_data.R
 nSims   <- 5000        # optimizer ensemble; study1_quad median error at this level is 0.056
-mValues <- c(2, 5, 10, 25, 50)
+mValues <- c(1, 2, 5, 10, 25, 50)
 nReps   <- 25
 nCores  <- 32
 
@@ -105,12 +106,14 @@ one_rep <- function(i, m, seedBase){
 }
 
 res <- list()
+# Seeds are keyed on m rather than on its position in mValues, so editing the list does
+# not reseed the levels that stay in it. With nReps <= 999 no two levels overlap.
 for(mi in seq_along(mValues)){
   m <- mValues[mi]
   message(sprintf("\n=== m = %d snapshots, %d replicates ===", m, nReps))
   t0 <- Sys.time()
   res[[as.character(m)]] <- mcprogress::pmclapply(seq_len(nReps), one_rep, m = m,
-                                                  seedBase = 80000 + 1000*mi,
+                                                  seedBase = 80000 + 1000*m,
                                                   mc.cores = nCores, mc.preschedule = FALSE)
   message(sprintf("m = %3d done in %.1f min", m,
                   as.numeric(difftime(Sys.time(), t0, units = "mins"))))
