@@ -19,6 +19,7 @@
 #' @param normalized Normalize IS weights?
 #' @param nSims Number of simulations
 #' @param repRange Repulsion range
+#' @param thinningType Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
 #' @param xlims Simulation window x limits
 #' @param ylims Simulation window y limits
 #' @param wq Weights for contrast function
@@ -32,7 +33,7 @@
 #' @export
 minimum_contrast_sr1 <- function(params, par_free_index, epsilon, delta_hat,
                                         tol = 10^-8, max.iter = 10000, normalized,
-                                        rho_hat, K_hat, nSims, repRange, xlims, ylims, wq, eta,
+                                        rho_hat, K_hat, nSims, repRange, thinningType = 2, xlims, ylims, wq, eta,
                                         simulation_threshold, r, printProgress = FALSE){
   # Initialize output: ----
   nSteps <- 1
@@ -46,6 +47,7 @@ minimum_contrast_sr1 <- function(params, par_free_index, epsilon, delta_hat,
     print("Starting initial step")
   }
   simStepRes <- simulation_step(nSims = nSims, params = params, repRange = repRange,
+                                thinningType = thinningType,
                                 xlims = xlims, ylims = ylims, K_hat = K_hat,
                                 printProgress = printProgress)
 
@@ -104,6 +106,7 @@ minimum_contrast_sr1 <- function(params, par_free_index, epsilon, delta_hat,
         print(paste("Simulating new pattern at step", nSteps, ": "))
       }
       simStepRes <- simulation_step(nSims = nSims, params = params, repRange = repRange,
+                                thinningType = thinningType,
                                     xlims = xlims, ylims = ylims, K_hat = K_hat,
                                     printProgress = printProgress)
       params_sim <- params

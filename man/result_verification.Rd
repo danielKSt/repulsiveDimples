@@ -9,6 +9,7 @@ result_verification(
   K_hat,
   param_estim,
   repRange_estim,
+  thinningType = 2,
   q = 1/4,
   nSims = 1000,
   xrange = c(0, 10),
@@ -23,6 +24,8 @@ result_verification(
 \item{param_estim}{The parameters estimated from the minimum contrast estimation}
 
 \item{repRange_estim}{Estimated repulsion range}
+
+\item{thinningType}{Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.}
 
 \item{q}{Power to apply to K-function}
 

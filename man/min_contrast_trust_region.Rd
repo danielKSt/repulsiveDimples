@@ -8,6 +8,7 @@ min_contrast_trust_region(
   params,
   parFreeIndex,
   repRange,
+  thinningType = 2,
   rho_hat,
   K_hat,
   xlims,
@@ -50,6 +51,11 @@ min_contrast_trust_region(
 \item{parFreeIndex}{Indices of parameters to estimate}
 
 \item{repRange}{Repulsion range}
+
+\item{thinningType}{Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
+It only changes how the ensembles are simulated. The importance sampling weights are
+taken over the parents and the unthinned daughters, and the thinning does not depend
+on \verb{(kappa, omega, mu)}, so the same weights are valid for every type.}
 
 \item{rho_hat}{Estimated intensity for data}
 

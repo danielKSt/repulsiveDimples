@@ -16,6 +16,10 @@
 #' @param params Initial guess for parameters to estimate
 #' @param parFreeIndex Indices of parameters to estimate
 #' @param repRange Repulsion range
+#' @param thinningType Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
+#' It only changes how the ensembles are simulated. The importance sampling weights are
+#' taken over the parents and the unthinned daughters, and the thinning does not depend
+#' on `(kappa, omega, mu)`, so the same weights are valid for every type.
 #' @param K_hat Estimated K-function for data
 #' @param rho_hat Estimated intensity for data
 #' @param wq Weights for contrast function
@@ -227,7 +231,7 @@
 #' pre-fitting cycles, which is worth remembering when tabulating them by cycle.
 #'
 #' @export
-min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
+min_contrast_trust_region <- function(params, parFreeIndex, repRange, thinningType = 2, rho_hat, K_hat,
                                       xlims, ylims, nSims, deltaInit, eta, deltaMax, deltaMin = 0.0001,
                                       wq = c(1000, 1/4), normalized = TRUE, eta_trust = 0.6,
                                       eta_converged = 0.99, validate.converged = FALSE,
@@ -284,7 +288,8 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
                        ", fitting on ", blockName, ":"))
         }
         blockRes <- trust_region_loop(params = params, parFreeIndex = block$index,
-                                      repRange = repRange, rho_hat = rho_hat, K_hat = K_hat,
+                                      repRange = repRange, thinningType = thinningType,
+                                      rho_hat = rho_hat, K_hat = K_hat,
                                       xlims = xlims, ylims = ylims, nSims = nSims,
                                       deltaInit = deltaInit, eta = eta, deltaMax = deltaMax,
                                       deltaMin = deltaMin, wq = block$wq, normalized = normalized,
@@ -332,7 +337,8 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
 
   # Main fit: ----
   res <- trust_region_loop(params = params, parFreeIndex = parFreeIndex,
-                           repRange = repRange, rho_hat = rho_hat, K_hat = K_hat,
+                           repRange = repRange, thinningType = thinningType,
+                           rho_hat = rho_hat, K_hat = K_hat,
                            xlims = xlims, ylims = ylims, nSims = nSims,
                            deltaInit = deltaInit, eta = eta, deltaMax = deltaMax,
                            deltaMin = deltaMin, wq = wq, normalized = normalized,
@@ -377,6 +383,7 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
 #' start from. Entries outside `parFreeIndex` are held fixed throughout.
 #' @param parFreeIndex Indices of `params` to estimate.
 #' @param repRange Repulsion range.
+#' @param thinningType Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
 #' @param rho_hat Estimated intensity for data.
 #' @param K_hat Estimated K-function for data.
 #' @param xlims Simulation window x limits.
@@ -526,7 +533,7 @@ min_contrast_trust_region <- function(params, parFreeIndex, repRange, rho_hat, K
 #' \code{\link{trust_step}} and \code{\link{evaluate_improvement}} output for each step).
 #'
 #' @export
-trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
+trust_region_loop <- function(params, parFreeIndex, repRange, thinningType = 2, rho_hat, K_hat,
                               xlims, ylims, nSims, deltaInit, eta, deltaMax, deltaMin = 0.0001,
                               wq = c(1000, 1/4), normalized = TRUE, eta_trust = 0.6,
                               eta_converged = 0.99, validate.converged = FALSE,
@@ -545,6 +552,7 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
   update_evaluations <- vector(mode = "list", length = max.iter)
 
   simStepRes <- simulation_step(nSims = nSims, params = params, repRange = repRange,
+                                thinningType = thinningType,
                                 xlims = xlims, ylims = ylims, K_hat = K_hat,
                                 printProgress = printProgress)
   daughter_kernel_cache <- simStepRes$daughter_kernel_cache
@@ -616,6 +624,7 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
     params_star[parFreeIndex] <- res$x_star
 
     simStepRes_star <- simulation_step(nSims = nSims, params = params_star, repRange = repRange,
+                                       thinningType = thinningType,
                                        xlims = xlims, ylims = ylims, K_hat = K_hat,
                                        printProgress = printProgress)
     f_star <- contrast_is(simStepRes = simStepRes_star, params_0 = params_star,
@@ -675,7 +684,9 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
 #' @param nSims Number of patterns to simulate.
 #' @param params Log-scale parameter vector `(log kappa, log omega, log mu)` to simulate
 #' from.
-#' @param repRange Repulsion range of the Matern II thinning, passed to
+#' @param repRange Repulsion range of the Matern thinning, passed to
+#' \code{\link{rThomas_matern_thinned}}.
+#' @param thinningType Type of Matern thinning, 1, 2 or 3, passed to
 #' \code{\link{rThomas_matern_thinned}}.
 #' @param xlims Simulation window x limits.
 #' @param ylims Simulation window y limits.
@@ -689,12 +700,14 @@ trust_region_loop <- function(params, parFreeIndex, repRange, rho_hat, K_hat,
 #' expects).
 #'
 #' @export
-simulation_step <- function(nSims, params, repRange, xlims, ylims, K_hat, printProgress = FALSE){
+simulation_step <- function(nSims, params, repRange, thinningType = 2, xlims, ylims, K_hat,
+                            printProgress = FALSE){
   if(printProgress){
     print("Simulating pattern: ")
     patternSim <- mcprogress::pmclapply(X = rep(exp(params[1]), nSims), FUN = rThomas_matern_thinned,
                                         scale = exp(params[2]), mu = exp(params[3]),
-                                        repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
+                                        repulsionRange = repRange, thinningType = thinningType,
+                                        xlims = xlims, ylims = ylims, saveparents = TRUE)
     print("Calculating densities for the simulation parameter:")
     baseline <- baseline_densities(patternSim = patternSim, params = params, printProgress = TRUE)
     print("Estimating baselines: ")
@@ -702,7 +715,8 @@ simulation_step <- function(nSims, params, repRange, xlims, ylims, K_hat, printP
   } else {
     patternSim <- parallel::mclapply(X = rep(exp(params[1]), nSims), FUN = rThomas_matern_thinned,
                                      scale = exp(params[2]), mu = exp(params[3]),
-                                     repulsionRange = repRange, xlims = xlims, ylims = ylims, saveparents = TRUE)
+                                     repulsionRange = repRange, thinningType = thinningType,
+                                     xlims = xlims, ylims = ylims, saveparents = TRUE)
     K_lambda_baseline <- parallel::mclapply(patternSim, estimate_K_lambda_baseline, r_vec = K_hat$r)
     baseline <- baseline_densities(patternSim = patternSim, params = params, printProgress = FALSE)
   }

@@ -8,6 +8,7 @@ trust_region_loop(
   params,
   parFreeIndex,
   repRange,
+  thinningType = 2,
   rho_hat,
   K_hat,
   xlims,
@@ -43,6 +44,8 @@ start from. Entries outside \code{parFreeIndex} are held fixed throughout.}
 \item{parFreeIndex}{Indices of \code{params} to estimate.}
 
 \item{repRange}{Repulsion range.}
+
+\item{thinningType}{Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.}
 
 \item{rho_hat}{Estimated intensity for data.}
 

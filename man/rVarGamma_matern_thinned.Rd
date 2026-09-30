@@ -2,9 +2,17 @@
 % Please edit documentation in R/simulation.R
 \name{rVarGamma_matern_thinned}
 \alias{rVarGamma_matern_thinned}
-\title{Variance Gamma with Matern II thinning}
+\title{Variance Gamma with Matern thinning}
 \usage{
-rVarGamma_matern_thinned(kappa, scale, mu, nu, repulsionRange, win)
+rVarGamma_matern_thinned(
+  kappa,
+  scale,
+  mu,
+  nu,
+  repulsionRange,
+  win,
+  thinningType = 2
+)
 }
 \arguments{
 \item{kappa}{See rVarGamma in spatstat}
@@ -18,7 +26,9 @@ rVarGamma_matern_thinned(kappa, scale, mu, nu, repulsionRange, win)
 \item{repulsionRange}{Range of hard-core repulsion}
 
 \item{win}{Simulation window to be used}
+
+\item{thinningType}{Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.}
 }
 \description{
-Simulates a Variance Gamma SNCP and applies a Matern II thinning to it
+Simulates a Variance Gamma SNCP and applies a Matern thinning of type \code{thinningType} to it
 }

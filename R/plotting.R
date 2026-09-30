@@ -29,17 +29,19 @@ mypcfplot.ggplot <- function(pcf_input){
 #' @param K_hat K-function estimated from the data
 #' @param param_estim The parameters estimated from the minimum contrast estimation
 #' @param repRange_estim Estimated repulsion range
+#' @param thinningType Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
 #' @param q Power to apply to K-function
 #' @param nSims numer of simulations
 #' @param xrange xrange for simulation window
 #' @param yrange yrange for simulation window
 #'
 #' @export
-result_verification <- function(rho_hat, K_hat, param_estim, repRange_estim, q = 1/4,
+result_verification <- function(rho_hat, K_hat, param_estim, repRange_estim, thinningType = 2, q = 1/4,
                                 nSims = 1000, xrange = c(0,10), yrange = c(0,10)){
   verifPattern <- lapply(rep(param_estim[1], nSims), rThomas_matern_thinned,
                          scale = param_estim[2], mu = param_estim[3],
-                         repulsionRange = repRange_estim, xlims = xrange, ylims = yrange)
+                         repulsionRange = repRange_estim, thinningType = thinningType,
+                         xlims = xrange, ylims = yrange, saveparents = TRUE)
 
   rho_verif_baseline <- sapply(verifPattern, estimate_rho_baseline)
   K_lambda_verif_baseline <- lapply(verifPattern, estimate_K_lambda_baseline, r_vec = K_hat$r)

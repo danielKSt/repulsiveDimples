@@ -2,7 +2,7 @@
 % Please edit documentation in R/simulation.R
 \name{rThomas_matern_thinned}
 \alias{rThomas_matern_thinned}
-\title{Thomas process with Matern II thinning}
+\title{Thomas process with Matern thinning}
 \usage{
 rThomas_matern_thinned(
   kappa,
@@ -11,7 +11,8 @@ rThomas_matern_thinned(
   repulsionRange,
   xlims,
   ylims,
-  saveparents = FALSE
+  saveparents = FALSE,
+  thinningType = 2
 )
 }
 \arguments{
@@ -28,7 +29,16 @@ rThomas_matern_thinned(
 \item{ylims}{ylim}
 
 \item{saveparents}{Logical value indicating whether to save the locations of the parent points as an attribute.}
+
+\item{thinningType}{Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.}
 }
 \description{
-Simulates a Variance Gamma SNCP and applies a Matern II thinning to it
+Simulates a Thomas process and applies a Matern thinning of type \code{thinningType} to it
+}
+\details{
+The Thomas process is simulated on the window enlarged by \code{repulsionRange} on every
+side, so that points near the edge are thinned against the points just outside it.
+This is exact for types I and II, where whether a point is retained depends only on
+the points within \code{repulsionRange} of it. It is not exact for type III, where that
+dependence reaches further through chains of close points.
 }

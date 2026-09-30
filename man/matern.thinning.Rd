@@ -2,9 +2,15 @@
 % Please edit documentation in R/simulation.R
 \name{matern.thinning}
 \alias{matern.thinning}
-\title{Matern type II thinning}
+\title{Matern thinning}
 \usage{
-matern.thinning(initialPattern, repulsionRange, xrange, yrange)
+matern.thinning(
+  initialPattern,
+  repulsionRange,
+  xrange,
+  yrange,
+  thinningType = 2
+)
 }
 \arguments{
 \item{initialPattern}{DataFrame with the unthinned point pattern}
@@ -14,7 +20,20 @@ matern.thinning(initialPattern, repulsionRange, xrange, yrange)
 \item{xrange}{vector with max and min of x-axis in observation window}
 
 \item{yrange}{vector with max and min of y-axis in observation window}
+
+\item{thinningType}{Type of Matern thinning to perform, 1, 2 or 3.}
 }
 \description{
-Perform a Matern type II thinning on a point pattern
+Perform a Matern type I, II or III thinning on a point pattern
+}
+\details{
+Every point gets a uniform age mark, and in a close pair the older point has the
+larger mark.
+\itemize{
+\item Type I removes every point that has another point within \code{repulsionRange}.
+\item Type II removes every point that has an older point within \code{repulsionRange},
+whether or not that older point is itself removed.
+\item Type III visits the points from oldest to youngest and removes a point only
+if an older point within \code{repulsionRange} has been retained.
+}
 }

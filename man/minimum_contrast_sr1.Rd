@@ -16,6 +16,7 @@ minimum_contrast_sr1(
   K_hat,
   nSims,
   repRange,
+  thinningType = 2,
   xlims,
   ylims,
   wq,
@@ -47,6 +48,8 @@ minimum_contrast_sr1(
 \item{nSims}{Number of simulations}
 
 \item{repRange}{Repulsion range}
+
+\item{thinningType}{Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.}
 
 \item{xlims}{Simulation window x limits}
 

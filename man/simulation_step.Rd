@@ -8,6 +8,7 @@ simulation_step(
   nSims,
   params,
   repRange,
+  thinningType = 2,
   xlims,
   ylims,
   K_hat,
@@ -20,7 +21,10 @@ simulation_step(
 \item{params}{Log-scale parameter vector \verb{(log kappa, log omega, log mu)} to simulate
 from.}
 
-\item{repRange}{Repulsion range of the Matern II thinning, passed to
+\item{repRange}{Repulsion range of the Matern thinning, passed to
+\code{\link{rThomas_matern_thinned}}.}
+
+\item{thinningType}{Type of Matern thinning, 1, 2 or 3, passed to
 \code{\link{rThomas_matern_thinned}}.}
 
 \item{xlims}{Simulation window x limits.}
