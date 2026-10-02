@@ -1,14 +1,21 @@
-# Shared body of the study<n>_conjugate.R and study<n>_quad.R run scripts.
+# Shared body of the trust region study runs: quad_run.R, and the study1_conjugate.R and
+# tolerance_pilot_run.R scripts in Thinning_type2/Study_scripts.
 #
-# Sourced by each of them. The six scripts differ only in which data set they load, how
-# many iterations the pre-fitting blocks get, and which trust step method they ask for, so
-# everything else lives here rather than in six copies that have to be kept in step by
-# hand.
+# The runs differ only in which data set they load, how many iterations the pre-fitting
+# blocks get, which trust step method they ask for and which thinning type they fit, so
+# everything else lives here rather than in copies that have to be kept in step by hand.
 
-resFolder <- "simulation_studies/Trust_region/Results/"
+# Each thinning type keeps its data and results in its own Thinning_type<N> folder. The
+# file names are the same across types, so sharing one folder would let a run of one type
+# silently overwrite another's.
+study_folder <- function(thinningType){
+  paste0("simulation_studies/Trust_region/Thinning_type", thinningType, "/")
+}
 
 # Starting parameters: fit as if the pattern were unthinned, and back out mu from the
 # intensity the thinning would have produced.
+# We use the intensity for thinningType 2 for all cases to avoid Lambert's W function in type 1,
+# and since type 3 is not available analyticaly
 study_start_params <- function(K_hat_unions, par_thomas, rho_hat){
   start_fitted <- thomas.estK(X = K_hat_unions, rmin = 2*par_thomas$rRange, rmax = 3)$par
   lambda <- -log(1 - pi*rho_hat*par_thomas$rRange^2)/(pi*par_thomas$rRange^2)
@@ -23,6 +30,9 @@ study_start_params <- function(K_hat_unions, par_thomas, rho_hat){
 # method         "conjugate" or "quadratic", passed to both phases of the fit
 # variant        the tag the output files carry, "conjugate" or "quad"
 # max.iter.prefit iterations allowed inside each pre-fitting block, which differs by study
+# thinningType   the Matern thinning type, 1, 2 or 3. It also decides the folder the results
+#                are saved in, see study_folder, so it has no default: a script that left
+#                it out would fit the wrong type and file the results under another type.
 #
 # Every fit is timed individually: `secs` and `cpu_secs` are added to the fit object it
 # returns, so a saved level holds one pair of times per fit rather than only the level
@@ -36,7 +46,7 @@ study_start_params <- function(K_hat_unions, par_thomas, rho_hat){
 # cycles cannot know where the blocks stop making progress, and the two studies differ in
 # how quickly they get there.
 run_study <- function(study, variant, method, start_params, par_thomas, rho_hat, K_hat,
-                      max.iter.prefit, nRuns = 200, nCores = 32,
+                      max.iter.prefit, thinningType, nRuns = 200, nCores = 32,
                       nSimsLevels = c(500, 1000, 5000, 10000),
                       seedBases = c(10000, 20000, 30000, 40000),
                       tolPrefitLoops = NULL){
@@ -60,7 +70,7 @@ run_study <- function(study, variant, method, start_params, par_thomas, rho_hat,
 
     common <- list(params = start_params, parFreeIndex = c(1, 2, 3),
                    repRange = par_thomas$rRange, rho_hat = rho_hat, K_hat = K_hat,
-                   xlims = c(0, 3), ylims = c(0, 3), nSims = nSims,
+                   xlims = c(0, 3), ylims = c(0, 3), nSims = nSims, thinningType = thinningType,
                    deltaInit = 0.2, eta = 0.05, deltaMax = 1.0, deltaMin = 0.0001,
                    wq = c(1000, 1/4), normalized = TRUE, eta_trust = 0.6,
                    eta_converged = 0.999, validate.converged = FALSE,
@@ -111,8 +121,8 @@ run_study <- function(study, variant, method, start_params, par_thomas, rho_hat,
     t0  <- Sys.time()
     res <- mcprogress::pmclapply(seq_len(nRuns), fit_one, nSims = nSims, seedBase = seedBase,
                                  mc.cores = nCores, mc.preschedule = FALSE)
-    save(res, nRuns, nSims, seedBase, method, start_params, par_thomas, rho_hat, K_hat,
-         file = paste0(resFolder, study, "_", variant, "_nSims", nSims, ".RDa"))
+    save(res, nRuns, nSims, seedBase, method, thinningType, start_params, par_thomas,
+         rho_hat, K_hat, file = paste0(resFolder, study, "_", variant, "_nSims", nSims, ".RDa"))
     ok <- !vapply(res, inherits, logical(1), "try-error")
     # A level in which every fit died has no times to summarise, and min/max of nothing
     # would turn the report into +/-Inf. Report what there is.
@@ -131,13 +141,16 @@ run_study <- function(study, variant, method, start_params, par_thomas, rho_hat,
     return(list(res = res, nSims = nSims))
   }
 
+  resFolder <- paste0(study_folder(thinningType), "Results/")
+  dir.create(resFolder, showWarnings = FALSE, recursive = TRUE)
+
   res <- vector(mode = "list", length = length(nSimsLevels))
   for(i in seq_along(nSimsLevels)){
     res[[i]] <- run_level(nSims = nSimsLevels[i], seedBase = seedBases[i])
   }
   # One element per ensemble size, each list(res = <fits>, nSims = <size>), which is the
   # shape combineParamsFinal in results_analysis_helpers.R expects.
-  save(res, nRuns, method, start_params, par_thomas, rho_hat, K_hat,
+  save(res, nRuns, method, thinningType, start_params, par_thomas, rho_hat, K_hat,
        file = paste0(resFolder, study, "_", variant, ".RDa"))
   return(invisible(res))
 }

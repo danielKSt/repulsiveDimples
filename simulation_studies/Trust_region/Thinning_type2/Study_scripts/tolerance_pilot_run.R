@@ -31,9 +31,12 @@ library(mcprogress)
 library(repulsiveDimples)
 
 source("simulation_studies/Trust_region/Helper_scripts/study_run_helpers.R")
+
+thinningType <- 2
+resFolder <- paste0(study_folder(thinningType), "Results/")
 dir.create(resFolder, showWarnings = FALSE, recursive = TRUE)
 
-load(file = "simulation_studies/Trust_region/Data/study1.RDa")
+load(file = paste0(study_folder(thinningType), "Data/study1.RDa"))
 start_params <- study_start_params(K_hat_unions = K_hat_unions, par_thomas = par_thomas,
                                    rho_hat = rho_hat)
 truth <- log(c(par_thomas$kappa, par_thomas$omega, par_thomas$mu))
@@ -51,7 +54,7 @@ for(meth in c("quadratic", "conjugate")){
     message(sprintf("\n=== %s: method %s, tolPrefitLoops %.2f ===", tag, meth, tolv))
     res <- run_study(study = "study1", variant = tag, method = meth,
                      start_params = start_params, par_thomas = par_thomas,
-                     rho_hat = rho_hat, K_hat = K_hat,
+                     rho_hat = rho_hat, K_hat = K_hat, thinningType = thinningType,
                      max.iter.prefit = 10, nRuns = nRuns, nCores = 32,
                      nSimsLevels = nSims, seedBases = seed,
                      tolPrefitLoops = tolv)
