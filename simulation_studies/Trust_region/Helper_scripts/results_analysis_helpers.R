@@ -11,7 +11,7 @@
 #
 # res   a single fit, as returned by min_contrast_trust_region
 # nSims the ensemble size that fit used, carried through as a column
-getParamsFinal <- function(res, nSims){
+get_params_final <- function(res, nSims){
   finalPars <- exp(res$params[nrow(res$params), ])
   paramsRes <- data.frame(kappa = finalPars[1],
                           omega = finalPars[2],
@@ -20,12 +20,8 @@ getParamsFinal <- function(res, nSims){
                           nSims = nSims,
                           row.names = NULL)
 
-  # seq_along rather than 1:length, so a fit run with max.iter.prefit = 0 (prefitResults
-  # is NULL) gives just the "final" row instead of erroring on 1:0.
   for(i in seq_along(res$prefitResults)){
     loopPars <- exp(res$prefitResults[[i]]$mu$params)
-    # Named rather than positional, so this does not silently mis-assign if the columns
-    # above are ever reordered.
     paramsRes <- rbind(paramsRes,
                        data.frame(kappa = loopPars[1],
                                   omega = loopPars[2],
@@ -37,17 +33,7 @@ getParamsFinal <- function(res, nSims){
   return(paramsRes)
 }
 
-# The same thing over every fit at every ensemble size, stacked into one data frame.
-#
-# resList a list with one element per ensemble size, each of the form
-#         list(res = <list of fits>, nSims = <ensemble size>), which is what
-#         study<N>_run.R's run_level returns.
-# quiet   set TRUE to suppress the note about fits that failed
-#
-# Fits that came back as "try-error" (mclapply hands those back rather than aborting the
-# rest of the level) are dropped, and counted in a message so a silently thinned level
-# does not pass unnoticed.
-combineParamsFinal <- function(resList, quiet = FALSE){
+combine_params_final <- function(resList, quiet = FALSE){
   perLevel <- lapply(resList, function(level){
     failed <- vapply(level$res, inherits, logical(1), "try-error")
     if(!quiet && any(failed)){
@@ -58,7 +44,7 @@ combineParamsFinal <- function(resList, quiet = FALSE){
     if(length(kept) == 0){
       return(NULL)
     }
-    do.call(rbind, lapply(kept, getParamsFinal, nSims = level$nSims))
+    do.call(rbind, lapply(kept, get_params_final, nSims = level$nSims))
   })
   return(do.call(rbind, perLevel))
 }
@@ -69,14 +55,18 @@ combineParamsFinal <- function(resList, quiet = FALSE){
 #
 # paramsFinal   as returned by combineParamsFinal
 # par_thomas    the true parameters, as stored in the study's data file
-# start_params  starting parameters ON THE LOG SCALE, matching the run scripts; pass NULL
+# thinningType  the Matern thinning type the fits were made under, 1, 2 or 3
+# studyNr       the study the fits belong to
+# startParams   starting parameters ON THE LOG SCALE, matching the run scripts; pass NULL
 #               to leave the starting-value reference line off
 # parameters    which parameters to show, and in what order
 # log_scale     TRUE plots the y axes on log10, the scale the optimizer works on, where
 #               equal relative spread reads as equal visual spread
-plotParamsFinal <- function(paramsFinal, par_thomas, start_params = NULL,
-                            parameters = c("kappa", "omega", "mu"),
-                            log_scale = FALSE){
+# title         the plot's title; the study and thinning type are added to it, and are the
+#               whole title when it is NULL
+plot_params_final <- function(paramsFinal, par_thomas, thinningType, studyNr,
+                              startParams = NULL, parameters = c("kappa", "omega", "mu"),
+                              log_scale = FALSE, title = NULL){
   # "final" has to be forced last: left as a character column it sorts ahead of the digits.
   # Levels come from the data so this survives a change to maxPrefitLoops, and a set of
   # fits that stopped pre-fitting on tolPrefitLoops after differing numbers of cycles.
@@ -97,12 +87,16 @@ plotParamsFinal <- function(paramsFinal, par_thomas, start_params = NULL,
     ggplot2::geom_hline(data = refLines, ggplot2::aes(yintercept = truth),
                         colour = "red", linetype = 2)
 
-  if(!is.null(start_params)){
-    refLines$start <- as.numeric(exp(start_params)[match(parameters,
-                                                         c("kappa", "omega", "mu"))])
+  if(!is.null(startParams)){
+    refLines$start <- as.numeric(exp(startParams)[match(parameters,
+                                                        c("kappa", "omega", "mu"))])
     p <- p + ggplot2::geom_hline(data = refLines, ggplot2::aes(yintercept = start),
                                  colour = "purple", linetype = 3)
   }
+
+  # The plots look much alike across studies and thinning types, so each one says which it
+  # shows.
+  studyLabel <- paste0("Study ", studyNr, ", Matern type ", as.roman(thinningType), " thinning")
 
   p <- p +
     ggplot2::geom_boxplot(outlier.size = 0.5, linewidth = 0.3,
@@ -110,8 +104,9 @@ plotParamsFinal <- function(paramsFinal, par_thomas, start_params = NULL,
     ggplot2::facet_wrap(~ parameter, ncol = 1, scales = "free_y") +
     ggplot2::scale_fill_brewer(palette = "Blues", name = "nSims") +
     ggplot2::labs(x = "prefit loop (then the main fit)", y = NULL,
+                  title = if(is.null(title)) studyLabel else paste0(title, " (", studyLabel, ")"),
                   subtitle = paste("red dashed = truth",
-                                   if(!is.null(start_params)) ", purple dotted = starting value"
+                                   if(!is.null(startParams)) ", purple dotted = starting value"
                                    else "")) +
     ggplot2::theme_bw() +
     ggplot2::theme(legend.position = "bottom")
