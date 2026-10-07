@@ -115,14 +115,16 @@ run_study <- function(study, variant, method, start_params, par_thomas, rho_hat,
 
   # Each level is saved as it finishes. nSims = 10000 is hours of work on its own, and
   # mclapply hands back a "try-error" for a worker that died rather than aborting the
-  # rest, so a single bad fit costs one fit instead of the study.
+  # rest, so a single bad fit costs one fit instead of the study. The level files are only
+  # a safeguard while the study runs: once every level is done and the combined file is
+  # saved, they are deleted.
   run_level <- function(nSims, seedBase){
     print(paste0("Starting ", study, " ", variant, " run with nSims = ", nSims))
     t0  <- Sys.time()
     res <- mcprogress::pmclapply(seq_len(nRuns), fit_one, nSims = nSims, seedBase = seedBase,
                                  mc.cores = nCores, mc.preschedule = FALSE)
     save(res, nRuns, nSims, seedBase, method, thinningType, start_params, par_thomas,
-         rho_hat, K_hat, file = paste0(resFolder, study, "_", variant, "_nSims", nSims, ".RDa"))
+         rho_hat, K_hat, file = level_file(nSims))
     ok <- !vapply(res, inherits, logical(1), "try-error")
     # A level in which every fit died has no times to summarise, and min/max of nothing
     # would turn the report into +/-Inf. Report what there is.
@@ -143,14 +145,21 @@ run_study <- function(study, variant, method, start_params, par_thomas, rho_hat,
 
   resFolder <- paste0(study_folder(thinningType), "Results/")
   dir.create(resFolder, showWarnings = FALSE, recursive = TRUE)
+  level_file <- function(nSims){
+    paste0(resFolder, study, "_", variant, "_nSims", nSims, ".RDa")
+  }
 
   res <- vector(mode = "list", length = length(nSimsLevels))
   for(i in seq_along(nSimsLevels)){
     res[[i]] <- run_level(nSims = nSimsLevels[i], seedBase = seedBases[i])
   }
   # One element per ensemble size, each list(res = <fits>, nSims = <size>), which is the
-  # shape combineParamsFinal in results_analysis_helpers.R expects.
-  save(res, nRuns, method, thinningType, start_params, par_thomas, rho_hat, K_hat,
+  # shape combineParamsFinal in results_analysis_helpers.R expects. seedBases is saved
+  # since the level files, which also record each level's seed, are deleted below.
+  save(res, nRuns, method, thinningType, seedBases, start_params, par_thomas, rho_hat, K_hat,
        file = paste0(resFolder, study, "_", variant, ".RDa"))
+  # save() stops with an error if the combined file cannot be written, so the level files
+  # are only removed once everything in them is in the combined file.
+  file.remove(level_file(unique(nSimsLevels)))
   return(invisible(res))
 }
