@@ -1,9 +1,3 @@
-# Fits every study setting with the quadratic trust step, under each thinning type, on the
-# data data_generation.R makes. Each run saves to Thinning_type<N>/Results/.
-#
-# Going by the type 2 runs, one thinning type over all three studies is about 450
-# cpu-hours, so roughly 14 hours on run_study's 32 cores.
-
 library(spatstat)
 library(parallel)
 library(mcprogress)
