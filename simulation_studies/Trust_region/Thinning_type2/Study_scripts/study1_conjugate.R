@@ -12,7 +12,7 @@ library(parallel)
 library(mcprogress)
 library(repulsiveDimples)
 
-source("simulation_studies/Trust_region/Helper_scripts/study_run_helpers.R")
+source("simulation_studies/Trust_region/Helper_scripts/study_helpers.R")
 
 # Matern thinning type to fit. It also decides which Thinning_type<N> folder the data are
 # loaded from and the results saved in.

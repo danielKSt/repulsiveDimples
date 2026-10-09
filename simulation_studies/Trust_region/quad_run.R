@@ -3,7 +3,7 @@ library(parallel)
 library(mcprogress)
 library(repulsiveDimples)
 
-source("simulation_studies/Trust_region/Helper_scripts/study_run_helpers.R")
+source("simulation_studies/Trust_region/Helper_scripts/study_helpers.R")
 
 # Iterations allowed inside each pre-fitting block, which differs by study.
 maxIterPrefit <- c(10, 10, 15)

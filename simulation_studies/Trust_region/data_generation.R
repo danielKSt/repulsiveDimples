@@ -1,4 +1,4 @@
-source(file = "simulation_studies/Trust_region/Helper_scripts/simStud_helpers_trust.R")
+source(file = "simulation_studies/Trust_region/Helper_scripts/study_helpers.R")
 
 # With R's default generator set.seed does not make pmclapply reproducible, since the
 # forked workers seed themselves. L'Ecuyer-CMRG gives each worker a stream derived from the
