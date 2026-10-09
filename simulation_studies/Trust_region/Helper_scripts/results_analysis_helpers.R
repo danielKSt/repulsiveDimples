@@ -57,6 +57,7 @@ combine_params_final <- function(resList, quiet = FALSE){
 # par_thomas    the true parameters, as stored in the study's data file
 # thinningType  the Matern thinning type the fits were made under, 1, 2 or 3
 # studyNr       the study the fits belong to
+# type          the kind of run the fits come from, "quad" or "sample_error", shown in the title
 # startParams   starting parameters ON THE LOG SCALE, matching the run scripts; pass NULL
 #               to leave the starting-value reference line off
 # parameters    which parameters to show, and in what order
@@ -64,7 +65,7 @@ combine_params_final <- function(resList, quiet = FALSE){
 #               equal relative spread reads as equal visual spread
 # title         the plot's title; the study and thinning type are added to it, and are the
 #               whole title when it is NULL
-plot_params_final <- function(paramsFinal, par_thomas, thinningType, studyNr,
+plot_params_final <- function(paramsFinal, par_thomas, thinningType, studyNr, type = "quad",
                               startParams = NULL, parameters = c("kappa", "omega", "mu"),
                               log_scale = FALSE, title = NULL){
   # "final" has to be forced last: left as a character column it sorts ahead of the digits.
@@ -96,7 +97,7 @@ plot_params_final <- function(paramsFinal, par_thomas, thinningType, studyNr,
 
   # The plots look much alike across studies and thinning types, so each one says which it
   # shows.
-  studyLabel <- paste0("Study ", studyNr, ", Matern type ", as.roman(thinningType), " thinning")
+  studyLabel <- paste0("Study ", studyNr, ", Matern type ", as.roman(thinningType), " thinning, ", type)
 
   p <- p +
     ggplot2::geom_boxplot(outlier.size = 0.5, linewidth = 0.3,
@@ -105,9 +106,9 @@ plot_params_final <- function(paramsFinal, par_thomas, thinningType, studyNr,
     ggplot2::scale_fill_brewer(palette = "Blues", name = "nSims") +
     ggplot2::labs(x = "prefit loop (then the main fit)", y = NULL,
                   title = if(is.null(title)) studyLabel else paste0(title, " (", studyLabel, ")"),
-                  subtitle = paste("red dashed = truth",
-                                   if(!is.null(startParams)) ", purple dotted = starting value"
-                                   else "")) +
+                  subtitle = paste0("red dashed = truth",
+                                    if(!is.null(startParams)) ", purple dotted = starting value"
+                                    else "")) +
     ggplot2::theme_bw() +
     ggplot2::theme(legend.position = "bottom")
 
