@@ -20,11 +20,12 @@
 # Run from the project root. The results are saved in
 # simulation_studies/VarGamma/Importance_sampling/Results.
 #
-# Set dry_run <- TRUE for a fast end-to-end check.
+# For a fast end-to-end check, add --dry-run to the command line:
+#   Rscript simulation_studies/VarGamma/Importance_sampling/R_scripts/study4_varGamma_run.R --dry-run
 
 source("simulation_studies/VarGamma/Importance_sampling/R_scripts/importance_sampling_varGamma.R")
 
-dry_run <- FALSE
+dry_run <- "--dry-run" %in% commandArgs(trailingOnly = TRUE)
 
 repRange <- 0.4
 nu <- 1/2
