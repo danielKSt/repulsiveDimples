@@ -17,9 +17,12 @@
 # forked mclapply workers reseed themselves and set.seed does not make the run
 # reproducible. With it, the run reproduces given the same mc.cores.
 #
+# Run from the project root. The results are saved in
+# simulation_studies/VarGamma/Importance_sampling/Results.
+#
 # Set dry_run <- TRUE for a fast end-to-end check.
 
-source("importance_sampling_varGamma.R")
+source("simulation_studies/VarGamma/Importance_sampling/R_scripts/importance_sampling_varGamma.R")
 
 dry_run <- FALSE
 
@@ -78,4 +81,5 @@ simStudyResults <- combined_sim_study_varGamma(par_delta = par_delta, nu = nu,
                                                r_vec = r_vec, nTrue = nTrue,
                                                printProgress = TRUE)
 
-save(simStudyResults, file = if (dry_run) "study4_varGamma_dryrun.RDa" else "study4_varGamma.RDa")
+resFolder <- "simulation_studies/VarGamma/Importance_sampling/Results/"
+save(simStudyResults, file = paste0(resFolder, if (dry_run) "study4_varGamma_dryrun.RDa" else "study4_varGamma.RDa"))
