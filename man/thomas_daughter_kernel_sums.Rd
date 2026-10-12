@@ -36,5 +36,5 @@ Computes the parts of \code{\link{thomas_daughter_log_density}} that depend on
 \eqn{\sum_j p_W(c_j)} and \eqn{\sum_i \log\left(\sum_j k(x_i-c_j)\right)}. These are
 the expensive, \eqn{O(n_{daughter} \times n_{parent})} parts of the log-density. Split
 out so they can be computed once and reused across evaluations that only change
-\eqn{\mu}, via \code{\link{thomas_daughter_log_density_from_sums}}.
+\eqn{\mu}, via \code{\link{daughter_log_density_from_sums}}.
 }

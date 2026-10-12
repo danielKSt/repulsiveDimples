@@ -51,9 +51,9 @@ importance_sampling_thomas <- function(par_0, par_goal, repRange, nSims, xlims_s
 
   rho_baseline <- sapply(patternSim, estimate_rho_baseline)
   if(printProgress){print("Calculating IS weights: ")}
-  w_is <- importance_sampling_weigths(kappa = kappa, mu = mu, omega = omega,
-                                      kappa_0 = kappa_0, mu_0 = mu_0, omega_0 = omega_0,
-                                      patternSim = patternSim, parallel = TRUE)$w_is
+  w_is <- importance_sampling_weights_thomas(kappa = kappa, mu = mu, omega = omega,
+                                             kappa_0 = kappa_0, mu_0 = mu_0, omega_0 = omega_0,
+                                             patternSim = patternSim, parallel = TRUE)$w_is
 
   rho_base <- rho_importance_sampling(rho_baseline = rho_baseline, w_is = rep(1, nSims))
   K_base <- K_importance_sampling(w_is = rep(1, nSims), rho_baseline = rho_baseline,

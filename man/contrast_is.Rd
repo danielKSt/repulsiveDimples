@@ -17,7 +17,9 @@ contrast_is(
 )
 }
 \arguments{
-\item{simStepRes}{Result from simulation step, see the 'simulation_step' function}
+\item{simStepRes}{Result from simulation step, see the 'simulation_step' function. Its
+\code{kernelType} decides which importance sampling weights are used, so they always match
+the process the ensemble was simulated from.}
 
 \item{params_0}{Parameters used in simulation of the point pattern}
 
@@ -33,7 +35,7 @@ contrast_is(
 
 \item{parallel_IS_weights}{Set to TRUE to use parallel computing for the importance weights}
 
-\item{daughter_kernel_cache}{Optional cache passed through to \code{\link{importance_sampling_weigths}};
+\item{daughter_kernel_cache}{Optional cache passed through to \code{\link{importance_sampling_weights_thomas}};
 see that function for details. Pass the \code{daughter_kernel_cache} from this call's return value into
 the next call to reuse cached work when \code{params_new}'s omega is unchanged. When \code{NULL}, the cache
 \code{simStepRes} already carries from its own simulation step is used instead of starting cold.}

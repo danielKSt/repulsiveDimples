@@ -7,6 +7,7 @@
 simulation_step(
   nSims,
   params,
+  kernelType = "thomas",
   repRange,
   thinningType = 2,
   xlims,
@@ -18,14 +19,14 @@ simulation_step(
 \arguments{
 \item{nSims}{Number of patterns to simulate.}
 
-\item{params}{Log-scale parameter vector \verb{(log kappa, log omega, log mu)} to simulate
-from.}
+\item{params}{Log-scale parameter vector to simulate from, \verb{(log kappa, log omega, log mu)} for \code{kernelType = "thomas"}.}
 
-\item{repRange}{Repulsion range of the Matern thinning, passed to
-\code{\link{rThomas_matern_thinned}}.}
+\item{kernelType}{Which cluster process to simulate. Currently only \code{"thomas"}, which
+simulates with \code{\link{rThomas_matern_thinned}}.}
 
-\item{thinningType}{Type of Matern thinning, 1, 2 or 3, passed to
-\code{\link{rThomas_matern_thinned}}.}
+\item{repRange}{Repulsion range of the Matern thinning, passed to the simulator.}
+
+\item{thinningType}{Type of Matern thinning, 1, 2 or 3, passed to the simulator.}
 
 \item{xlims}{Simulation window x limits.}
 
@@ -38,19 +39,21 @@ radii the baseline K-functions are evaluated on.}
 }
 \value{
 A list with \code{patternSim} (the simulated ensemble), \code{rho_baseline},
-\code{K_lambda_baseline}, \code{log_f_kappa_0}, \code{log_fCond_theta_0}, and
-\code{daughter_kernel_cache} (in the form \code{\link{importance_sampling_weigths}}
-expects).
+\code{K_lambda_baseline}, \code{log_f_kappa_0}, \code{log_fCond_theta_0}, \code{daughter_kernel_cache} (in
+the form the kernel's importance sampling weights expect, see
+\code{\link{importance_sampling_weights_thomas}}), and \code{kernelType}.
 }
 \description{
-Draws a fresh ensemble of \code{nSims} thinned Thomas patterns at \code{params} and computes
-everything about that ensemble which the subsequent importance sampling evaluations
-need: the baseline log-densities under \code{params} itself (the denominator of every
-importance sampling weight taken against this ensemble), the per-pattern baseline
-intensity and unnormalized K-function, and the daughter kernel sums at this
-\code{params}' omega.
+Draws a fresh ensemble of \code{nSims} thinned patterns of the cluster process named by
+\code{kernelType} at \code{params}, and computes everything about that ensemble which the
+subsequent importance sampling evaluations need: the baseline log-densities under
+\code{params} itself (the denominator of every importance sampling weight taken against
+this ensemble), the per-pattern baseline intensity and unnormalized K-function, and
+the daughter kernel sums at this \code{params}' kernel parameters.
 
 Everything in the returned list refers to the same ensemble, so it is passed around
 as a single object (see \code{\link{contrast_is}}) rather than as separate vectors
-that have to be kept in step with each other by hand.
+that have to be kept in step with each other by hand. That includes \code{kernelType},
+which \code{\link{contrast_is}} reads to pick the importance sampling weights that
+match the ensemble.
 }

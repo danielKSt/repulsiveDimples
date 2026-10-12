@@ -9,7 +9,7 @@
 # (taken at the end of the loop's mu block, which runs last), then "final" for the main
 # fit. Parameters come back on the natural scale.
 #
-# res   a single fit, as returned by min_contrast_trust_region
+# res   a single fit, as returned by min_contrast_trust_region_thomas
 # nSims the ensemble size that fit used, carried through as a column
 get_params_final <- function(res, nSims){
   finalPars <- exp(res$params[nrow(res$params), ])

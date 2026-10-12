@@ -7,6 +7,7 @@
 trust_region_loop(
   params,
   parFreeIndex,
+  kernelType = "thomas",
   repRange,
   thinningType = 2,
   rho_hat,
@@ -38,10 +39,15 @@ trust_region_loop(
 )
 }
 \arguments{
-\item{params}{Full log-scale parameter vector \verb{(log kappa, log omega, log mu)} to
-start from. Entries outside \code{parFreeIndex} are held fixed throughout.}
+\item{params}{Full log-scale parameter vector to start from, in the order the kernel
+uses: \verb{(log kappa, log omega, log mu)} for \code{kernelType = "thomas"}. Entries outside
+\code{parFreeIndex} are held fixed throughout.}
 
 \item{parFreeIndex}{Indices of \code{params} to estimate.}
+
+\item{kernelType}{Which cluster process to fit, which decides how the ensembles are
+simulated and how the importance sampling weights are computed. Currently only
+\code{"thomas"}, see \code{\link{simulation_step}}.}
 
 \item{repRange}{Repulsion range.}
 
@@ -223,10 +229,12 @@ step), \code{f_vals} (contrast value at each iterate) and \code{update_evals} (t
 }
 \description{
 Runs the trust region iteration to convergence over the coordinates named by
-\code{parFreeIndex}, holding the remaining entries of \code{params} fixed. This is the single
-loop behind \code{\link{min_contrast_trust_region}}: the pre-fitting blocks and the
-main fit differ only in which coordinates are free and how the contrast function is
-weighted, so they are the same call with different \code{parFreeIndex} and \code{wq}.
+\code{parFreeIndex}, holding the remaining entries of \code{params} fixed. This is the loop every
+kernel's optimizer is built on: in \code{\link{min_contrast_trust_region_thomas}} the
+pre-fitting blocks and the main fit differ only in which coordinates are free and how
+the contrast function is weighted, so they are the same call with different
+\code{parFreeIndex} and \code{wq}. Everything that depends on the kernel is reached through
+\code{kernelType}, in \code{\link{simulation_step}}.
 
 Each iteration simulates an ensemble at the current parameters, minimises the
 importance sampling estimate of the contrast function over the trust region with

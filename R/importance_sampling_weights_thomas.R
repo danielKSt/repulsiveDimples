@@ -1,6 +1,6 @@
-#' Use importance sampling to estimate the K-function
+#' Calculate importance sampling weights for a Thomas process
 #' @description
-#' Use importance sampling to estimate the Ripleys' K-function for parameter values
+#' Calculate importance sampling weights for a Thomas process
 #'
 #'
 #' @param kappa Kappa parameter
@@ -25,23 +25,17 @@
 #' `daughter_kernel_cache` is returned unchanged.
 #'
 #' @export
-importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 = NULL, omega_0 = NULL,
-                                        patternSim, log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL,
-                                        parallel = FALSE, daughter_kernel_cache = NULL){
-  # Target and simulation parameters coincide, so every weight is
-  # exp(log_f_kappa_0 + log_fCond_theta_0 - log_f_kappa_0 - log_fCond_theta_0) = 1 and
-  # none of the densities have to be touched at all. This is the case whenever an
-  # ensemble is evaluated at the very parameters it was simulated from, which the
-  # trust region optimizer does once per iteration to score a candidate step.
+importance_sampling_weights_thomas <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 = NULL, omega_0 = NULL,
+                                               patternSim, log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL,
+                                               parallel = FALSE, daughter_kernel_cache = NULL){
+
   if(isTRUE(kappa == kappa_0) && isTRUE(omega == omega_0) && isTRUE(mu == mu_0)){
     return(list(w_is = rep(1, length(patternSim)),
-                daughter_kernel_cache = daughter_kernel_cache))
+                daughter_kernel_cache = daughter_kernel_cache)) # All parameters being equal gives w_is = 1
   }
 
-  # The parent log-density is O(1) per pattern given the enlarged-window area and
-  # the parent count, and both of those are parameter-independent, so the two
-  # vectors are extracted once and reused for kappa_0 as well as kappa. This is
-  # the same expression as parent_log_density(), evaluated for all patterns at once.
+
+  # Parent density
   B_area   <- vapply(patternSim, function(p) p$B_area, numeric(1))
   n_parent <- vapply(patternSim, function(p) nrow(p$parent), numeric(1))
 
@@ -62,7 +56,7 @@ importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 =
   }
 
   log_fCond_theta <- vapply(daughter_kernel_cache$kernel_sums,
-                            thomas_daughter_log_density_from_sums, numeric(1), mu = mu)
+                            daughter_log_density_from_sums, numeric(1), mu = mu)
 
   if(is.null(log_fCond_theta_0)){
     if(isTRUE(all.equal(omega_0, omega))){
@@ -71,40 +65,20 @@ importance_sampling_weigths <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 =
       # mu-dependent combine differs. This is the common case when omega is not
       # one of the parameters being perturbed.
       log_fCond_theta_0 <- vapply(daughter_kernel_cache$kernel_sums,
-                                  thomas_daughter_log_density_from_sums, numeric(1), mu = mu_0)
+                                  daughter_log_density_from_sums, numeric(1), mu = mu_0)
     } else {
       if(parallel){
         kernel_sums_0 <- parallel::mclapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega_0)
       } else {
         kernel_sums_0 <- lapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega_0)
       }
-      log_fCond_theta_0 <- vapply(kernel_sums_0, thomas_daughter_log_density_from_sums,
+      log_fCond_theta_0 <- vapply(kernel_sums_0, daughter_log_density_from_sums,
                                   numeric(1), mu = mu_0)
     }
   }
 
   w_is <- exp(log_f_kappa + log_fCond_theta - log_f_kappa_0 - log_fCond_theta_0)
   return(list(w_is = w_is, daughter_kernel_cache = daughter_kernel_cache))
-}
-
-#' Calculate Poisson density of a parent process
-#' @description
-#' Computes the log-density of a daughter point pattern \eqn{C} as a homogeneous
-#' Poisson Point pattern restricted to the window \eqn{B}, with intensity \eqn{\kappa}.
-#'
-#' Specifically, the density is given by
-#' \deqn{f(C\cup B|\kappa)=\exp\left(|B|(1-\kappa)\right)\kappa^{|C\cap B|}}
-#'
-#'
-#' @param kappa    Positive scalar. Intensity of parent points.
-#' @param parent   A \code{data.frame} with columns \code{x} and \code{y} giving parent locations,
-#' typically restricted to an enlarged window \eqn{B \supset W}.
-#' @param B_area   Area of the enlarged window \eqn{B \supset W}.
-#' @param pattern  A list containing elements "parent" and "B_area" as described above
-#'
-#' @export
-parent_log_density <- function(pattern = NULL, kappa, parent = NULL, B_area = NULL){
-  return(pattern$B_area*(1-kappa) + nrow(pattern$parent)*log(kappa))
 }
 
 #' Log-density of the daughter pattern given parents for a Thomas cluster process
@@ -146,7 +120,7 @@ thomas_daughter_log_density <- function(pattern = NULL, mu, omega,
   kernel_sums <- thomas_daughter_kernel_sums(pattern = pattern, omega = omega,
                                              parent = parent, daughter = daughter,
                                              xlim = xlim, ylim = ylim)
-  return(thomas_daughter_log_density_from_sums(mu = mu, kernel_sums = kernel_sums))
+  return(daughter_log_density_from_sums(mu = mu, kernel_sums = kernel_sums))
 }
 
 #' Kernel sums for the Thomas daughter log-density (the omega-dependent part)
@@ -157,7 +131,7 @@ thomas_daughter_log_density <- function(pattern = NULL, mu, omega,
 #' \eqn{\sum_j p_W(c_j)} and \eqn{\sum_i \log\left(\sum_j k(x_i-c_j)\right)}. These are
 #' the expensive, \eqn{O(n_{daughter} \times n_{parent})} parts of the log-density. Split
 #' out so they can be computed once and reused across evaluations that only change
-#' \eqn{\mu}, via \code{\link{thomas_daughter_log_density_from_sums}}.
+#' \eqn{\mu}, via \code{\link{daughter_log_density_from_sums}}.
 #'
 #' @param omega    Positive scalar. Standard deviation of the Gaussian dispersal kernel.
 #' @param parent   A \code{data.frame} with columns \code{x} and \code{y} giving parent locations.
@@ -202,20 +176,4 @@ thomas_daughter_kernel_sums <- function(pattern = NULL, omega,
   }
 
   return(list(area_W = area_W, S_pW = S_pW, sumLogK = sumLogK, nDaughter = nrow(daughter)))
-}
-
-#' Combine cached kernel sums with mu into the Thomas daughter log-density
-#'
-#' @description
-#' O(1) combine step completing \code{\link{thomas_daughter_kernel_sums}} into the
-#' full log-density from \code{\link{thomas_daughter_log_density}}.
-#'
-#' @param mu Positive scalar. Mean number of daughters per parent.
-#' @param kernel_sums Output of \code{\link{thomas_daughter_kernel_sums}}.
-#'
-#' @return A scalar giving \eqn{\log f(X \mid C)}.
-#'
-#' @export
-thomas_daughter_log_density_from_sums <- function(mu, kernel_sums){
-  kernel_sums$area_W - mu*kernel_sums$S_pW + kernel_sums$sumLogK + log(mu)*kernel_sums$nDaughter
 }

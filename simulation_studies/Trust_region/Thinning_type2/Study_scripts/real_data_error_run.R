@@ -87,7 +87,7 @@ one_rep <- function(i, m, seedBase){
   }
 
   t0 <- proc.time()
-  fit <- try(min_contrast_trust_region(
+  fit <- try(min_contrast_trust_region_thomas(
     params = start_params, parFreeIndex = c(1, 2, 3), repRange = par_thomas$rRange,
     rho_hat = rho_m, K_hat = K_m, xlims = c(0, 3), ylims = c(0, 3), nSims = nSims,
     deltaInit = 0.2, eta = 0.05, deltaMax = 1.0, deltaMin = 0.0001, wq = c(1000, 1/4),

@@ -158,3 +158,58 @@ estimate_K_lambda_baseline <- function(pattern, r_vec){
 
   return(data.frame(r = r_vec, border = 2 * border))
 }
+
+#' Calculate Poisson density of a parent process
+#' @description
+#' Computes the log-density of a parent point pattern \eqn{C} as a homogeneous
+#' Poisson point process restricted to the window \eqn{B}, with intensity \eqn{\kappa}.
+#' The parents of every Neyman-Scott process are such a process, so this does not depend
+#' on the cluster kernel.
+#'
+#' Specifically, the density is given by
+#' \deqn{f(C\cap B|\kappa)=\exp\left(|B|(1-\kappa)\right)\kappa^{|C\cap B|}}
+#'
+#'
+#' @param kappa    Positive scalar. Intensity of parent points.
+#' @param parent   A \code{data.frame} with columns \code{x} and \code{y} giving parent locations,
+#' typically restricted to an enlarged window \eqn{B \supset W}.
+#' @param B_area   Area of the enlarged window \eqn{B \supset W}.
+#' @param pattern  A list containing elements "parent" and "B_area" as described above. If
+#' given, `parent` and `B_area` are taken from it.
+#'
+#' @export
+parent_log_density <- function(pattern = NULL, kappa, parent = NULL, B_area = NULL){
+  if(!is.null(pattern)){
+    parent <- pattern$parent
+    B_area <- pattern$B_area
+  }
+  return(B_area*(1-kappa) + nrow(parent)*log(kappa))
+}
+
+#' Combine cached kernel sums with mu into the daughter log-density
+#'
+#' @description
+#' O(1) combine step completing a kernel's kernel sums into the log-density of the
+#' daughter pattern \eqn{X} given the parents \eqn{C}. Given \eqn{C}, the daughters of a
+#' Neyman-Scott process with a Poisson(\eqn{\mu}) number of daughters per parent and
+#' dispersal kernel \eqn{k} form a Poisson process on \eqn{W} with intensity
+#' \eqn{\mu \sum_{c_j \in C} k(x - c_j)}, so
+#' \deqn{
+#'   \log f(X \mid C) = |W| - \mu \sum_{c_j \in C} p_W(c_j)
+#'   + \sum_{x_i \in X} \log \sum_{c_j \in C} k(x_i - c_j) + |X| \log \mu
+#' }
+#' with \eqn{p_W(c_j) = \int_W k(x - c_j)\,\mathrm{d}x}. Only the kernel sums depend on the
+#' kernel, so this step is shared by every kernel. See
+#' \code{\link{thomas_daughter_log_density}} for the Thomas process.
+#'
+#' @param mu Positive scalar. Mean number of daughters per parent.
+#' @param kernel_sums A list with \code{area_W} (\eqn{|W|}), \code{S_pW}
+#' (\eqn{\sum_j p_W(c_j)}), \code{sumLogK} (\eqn{\sum_i \log \sum_j k(x_i-c_j)}) and
+#' \code{nDaughter} (\eqn{|X|}), as returned by \code{\link{thomas_daughter_kernel_sums}}.
+#'
+#' @return A scalar giving \eqn{\log f(X \mid C)}.
+#'
+#' @export
+daughter_log_density_from_sums <- function(mu, kernel_sums){
+  kernel_sums$area_W - mu*kernel_sums$S_pW + kernel_sums$sumLogK + log(mu)*kernel_sums$nDaughter
+}

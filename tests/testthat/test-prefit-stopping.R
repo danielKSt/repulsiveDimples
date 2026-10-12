@@ -17,14 +17,14 @@ run_fit <- function(..., max.iter.prefit = 2, seed = 1) {
   old <- options(mc.cores = 1)
   on.exit(options(old), add = TRUE)
   set.seed(seed)
-  min_contrast_trust_region(params = f$params, parFreeIndex = c(1, 2, 3),
-                            repRange = f$repRange, rho_hat = f$rho_hat, K_hat = f$K_hat,
-                            xlims = f$xlims, ylims = f$ylims, nSims = f$nSims,
-                            deltaInit = 0.2, eta = 0.05, deltaMax = 1, wq = c(1, 1/4),
-                            subsection_count.main = 5, subsection_count.prefit = 5,
-                            line_iterations.main = 1, line_iterations.prefit = 1,
-                            eta_trust = 0.5, eta_converged = 0.99,
-                            max.iter.prefit = max.iter.prefit, max.iter = 2, ...)
+  min_contrast_trust_region_thomas(params = f$params, parFreeIndex = c(1, 2, 3),
+                                   repRange = f$repRange, rho_hat = f$rho_hat, K_hat = f$K_hat,
+                                   xlims = f$xlims, ylims = f$ylims, nSims = f$nSims,
+                                   deltaInit = 0.2, eta = 0.05, deltaMax = 1, wq = c(1, 1/4),
+                                   subsection_count.main = 5, subsection_count.prefit = 5,
+                                   line_iterations.main = 1, line_iterations.prefit = 1,
+                                   eta_trust = 0.5, eta_converged = 0.99,
+                                   max.iter.prefit = max.iter.prefit, max.iter = 2, ...)
 }
 
 # Parameters at the end of a prefit cycle: the last block in it that actually ran.

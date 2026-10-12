@@ -168,7 +168,7 @@ fit_trust_region <- function(start_params, par_thomas, rho_hat, K_hat, nSims, th
   # that reads a fit by name -- getParamsFinal and the rest of
   # results_analysis_helpers.R -- is unaffected.
   t0  <- proc.time()
-  res <- do.call(min_contrast_trust_region, c(common, perMethod))
+  res <- do.call(min_contrast_trust_region_thomas, c(common, perMethod))
   el  <- proc.time() - t0
   res$secs     <- unname(el[["elapsed"]])
   res$cpu_secs <- unname(el[["user.self"]] + el[["sys.self"]])
