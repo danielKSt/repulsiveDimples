@@ -32,6 +32,10 @@ rThomas_matern_thinned(
 
 \item{thinningType}{Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.}
 }
+\value{
+If \code{saveparents} is \code{FALSE}, a data frame with the thinned points. Otherwise the
+list described in \code{\link{matern_thin_cluster_pattern}}.
+}
 \description{
 Simulates a Thomas process and applies a Matern thinning of type \code{thinningType} to it
 }
@@ -41,4 +45,10 @@ side, so that points near the edge are thinned against the points just outside i
 This is exact for types I and II, where whether a point is retained depends only on
 the points within \code{repulsionRange} of it. It is not exact for type III, where that
 dependence reaches further through chains of close points.
+
+The parents are simulated with \code{nonempty = FALSE}, so the saved parents are a Poisson
+process of intensity \code{kappa}, parents without daughters included. The importance
+sampling weights assume this. spatstat's default, \code{nonempty = TRUE}, only keeps parents
+with at least one daughter, which leaves the daughters' distribution unchanged but
+makes the raw importance sampling weights biased by a constant factor.
 }

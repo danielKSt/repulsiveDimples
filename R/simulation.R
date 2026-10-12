@@ -76,6 +76,12 @@ matern.thinning <- function(initialPattern, repulsionRange, xrange, yrange, thin
 #' the points within `repulsionRange` of it. It is not exact for type III, where that
 #' dependence reaches further through chains of close points.
 #'
+#' The parents are simulated with `nonempty = FALSE`, so the saved parents are a Poisson
+#' process of intensity `kappa`, parents without daughters included. The importance
+#' sampling weights assume this. spatstat's default, `nonempty = TRUE`, only keeps parents
+#' with at least one daughter, which leaves the daughters' distribution unchanged but
+#' makes the raw importance sampling weights biased by a constant factor.
+#'
 #' @param kappa See rThomas in spatstat
 #' @param scale See rThomas in spatstat
 #' @param mu See rThomas in spatstat
@@ -85,6 +91,9 @@ matern.thinning <- function(initialPattern, repulsionRange, xrange, yrange, thin
 #' @param saveparents Logical value indicating whether to save the locations of the parent points as an attribute.
 #' @param thinningType Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
 #'
+#' @return If `saveparents` is `FALSE`, a data frame with the thinned points. Otherwise the
+#' list described in \code{\link{matern_thin_cluster_pattern}}.
+#'
 #' @export
 rThomas_matern_thinned <- function(kappa, scale, mu, repulsionRange, xlims, ylims, saveparents = FALSE,
                                    thinningType = 2){
@@ -93,8 +102,83 @@ rThomas_matern_thinned <- function(kappa, scale, mu, repulsionRange, xlims, ylim
   # I've set algorithm = 'naive' due to some issues with the default for large simulation windows.
   unthinned <- spatstat.random::rThomas(kappa = kappa, scale = scale, mu = mu,
                                         win = spatstat.geom::owin(xlims_un, ylims_un),
-                                        algorithm = "naive",
+                                        algorithm = "naive", nonempty = FALSE,
                                         saveparents = saveparents)
+
+  return(matern_thin_cluster_pattern(unthinned = unthinned, repulsionRange = repulsionRange,
+                                     xlims = xlims, ylims = ylims, saveparents = saveparents,
+                                     thinningType = thinningType))
+}
+
+
+#' Variance Gamma with Matern thinning
+#'
+#' @description
+#' Simulates a Variance Gamma SNCP and applies a Matern thinning of type `thinningType` to it
+#'
+#' @details
+#' Simulated in the same way as \code{\link{rThomas_matern_thinned}}: on the window enlarged
+#' by `repulsionRange`, and with `nonempty = FALSE`, see there for why.
+#'
+#' The cluster kernel is
+#' \deqn{k(u) = \frac{(\|u\|/\sigma)^{\nu} K_{\nu}(\|u\|/\sigma)}{\pi 2^{\nu+1} \sigma^2 \Gamma(\nu+1)}}
+#' with \eqn{\sigma} = `scale`, where \eqn{K_\nu} is the modified Bessel function of the
+#' second kind.
+#'
+#' @param kappa See rVarGamma in spatstat
+#' @param scale See rVarGamma in spatstat
+#' @param mu See rVarGamma in spatstat
+#' @param nu See rVarGamma in spatstat
+#' @param repulsionRange Range of hard-core repulsion
+#' @param xlims xlim
+#' @param ylims ylim
+#' @param saveparents Logical value indicating whether to save the locations of the parent points as an attribute.
+#' @param thinningType Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
+#'
+#' @return If `saveparents` is `FALSE`, a data frame with the thinned points. Otherwise the
+#' list described in \code{\link{matern_thin_cluster_pattern}}.
+#'
+#' @export
+rVarGamma_matern_thinned <- function(kappa, scale, mu, nu, repulsionRange, xlims, ylims, saveparents = FALSE,
+                                     thinningType = 2){
+  xlims_un <- c(xlims[1] - repulsionRange, xlims[2] + repulsionRange)
+  ylims_un <- c(ylims[1] - repulsionRange, ylims[2] + repulsionRange)
+  # I've set algorithm = 'naive' due to some issues with the default for large simulation windows.
+  unthinned <- spatstat.random::rVarGamma(kappa = kappa, scale = scale, mu = mu, nu = nu,
+                                          win = spatstat.geom::owin(xlims_un, ylims_un),
+                                          algorithm = "naive", nonempty = FALSE,
+                                          saveparents = saveparents)
+
+  return(matern_thin_cluster_pattern(unthinned = unthinned, repulsionRange = repulsionRange,
+                                     xlims = xlims, ylims = ylims, saveparents = saveparents,
+                                     thinningType = thinningType))
+}
+
+
+#' Matern thinning of a simulated cluster process
+#'
+#' @description
+#' The step shared by \code{\link{rThomas_matern_thinned}} and
+#' \code{\link{rVarGamma_matern_thinned}}: applies the Matern thinning to a cluster process
+#' simulated on the window enlarged by `repulsionRange`, keeps the thinned points inside
+#' `xlims` x `ylims`, and collects the parents and unthinned daughters if they were saved.
+#'
+#' @param unthinned The unthinned cluster process, a \code{ppp} simulated on the window
+#' enlarged by `repulsionRange` on every side, with the parents as an attribute if
+#' `saveparents` is `TRUE`.
+#' @param repulsionRange Range of hard-core repulsion
+#' @param xlims xlim of the observation window
+#' @param ylims ylim of the observation window
+#' @param saveparents Logical value indicating whether the parents were saved.
+#' @param thinningType Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
+#'
+#' @return If `saveparents` is `FALSE`, a data frame with the thinned points. Otherwise a
+#' list with `parent` (the parents in the enlarged parent window \eqn{B}), `daughter` (the
+#' unthinned daughters in the enlarged window), `thinned`, `xlim_unthinned` and
+#' `ylim_unthinned` (the enlarged window), `B_area`, and `xlim_thinned` and `ylim_thinned`.
+matern_thin_cluster_pattern <- function(unthinned, repulsionRange, xlims, ylims, saveparents, thinningType){
+  xlims_un <- c(xlims[1] - repulsionRange, xlims[2] + repulsionRange)
+  ylims_un <- c(ylims[1] - repulsionRange, ylims[2] + repulsionRange)
 
   if(saveparents){
     parents <- attr(unthinned, "parents")
@@ -134,35 +218,5 @@ rThomas_matern_thinned <- function(kappa, scale, mu, repulsionRange, xlims, ylim
                 xlim_thinned = xlims, ylim_thinned = ylims))
   } else {
     return(thinned)
-  }
-}
-
-
-#' Variance Gamma with Matern thinning
-#'
-#' @description
-#' Simulates a Variance Gamma SNCP and applies a Matern thinning of type `thinningType` to it
-#'
-#'
-#' @param kappa See rVarGamma in spatstat
-#' @param scale See rVarGamma in spatstat
-#' @param mu See rVarGamma in spatstat
-#' @param nu See rVarGamma in spatstat
-#' @param repulsionRange Range of hard-core repulsion
-#' @param win Simulation window to be used
-#' @param thinningType Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
-#'
-#' @export
-rVarGamma_matern_thinned <- function(kappa, scale, mu, nu, repulsionRange, win, thinningType = 2){
-  # I've set algorithm = 'naive' due to some issues with the default for large simulation windows.
-  unthinned <- spatstat.random::rVarGamma(kappa = kappa, scale = scale, mu = mu, nu = nu,
-                                          win = win, algorithm = "naive")
-  if(unthinned$n > 1){
-    unthinned <- data.frame(x = unthinned$x, y = unthinned$y)
-    thinned <- matern.thinning(initialPattern = unthinned, repulsionRange = repulsionRange,
-                               xrange = win$xrange, yrange = win$yrange, thinningType = thinningType)
-    return(spatstat.geom::ppp(x = thinned$x, y = thinned$y, window = win))
-  } else {
-    return(unthinned)
   }
 }

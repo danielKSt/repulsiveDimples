@@ -10,7 +10,9 @@ rVarGamma_matern_thinned(
   mu,
   nu,
   repulsionRange,
-  win,
+  xlims,
+  ylims,
+  saveparents = FALSE,
   thinningType = 2
 )
 }
@@ -25,10 +27,27 @@ rVarGamma_matern_thinned(
 
 \item{repulsionRange}{Range of hard-core repulsion}
 
-\item{win}{Simulation window to be used}
+\item{xlims}{xlim}
+
+\item{ylims}{ylim}
+
+\item{saveparents}{Logical value indicating whether to save the locations of the parent points as an attribute.}
 
 \item{thinningType}{Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.}
 }
+\value{
+If \code{saveparents} is \code{FALSE}, a data frame with the thinned points. Otherwise the
+list described in \code{\link{matern_thin_cluster_pattern}}.
+}
 \description{
 Simulates a Variance Gamma SNCP and applies a Matern thinning of type \code{thinningType} to it
+}
+\details{
+Simulated in the same way as \code{\link{rThomas_matern_thinned}}: on the window enlarged
+by \code{repulsionRange}, and with \code{nonempty = FALSE}, see there for why.
+
+The cluster kernel is
+\deqn{k(u) = \frac{(\|u\|/\sigma)^{\nu} K_{\nu}(\|u\|/\sigma)}{\pi 2^{\nu+1} \sigma^2 \Gamma(\nu+1)}}
+with \eqn{\sigma} = \code{scale}, where \eqn{K_\nu} is the modified Bessel function of the
+second kind.
 }
