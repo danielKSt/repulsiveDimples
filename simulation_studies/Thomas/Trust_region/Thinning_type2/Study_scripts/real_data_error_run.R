@@ -32,9 +32,9 @@ library(parallel)
 library(mcprogress)
 library(repulsiveDimples)
 
-resFolder <- "simulation_studies/Trust_region/Thinning_type2/Results/"
+resFolder <- "simulation_studies/Thomas/Trust_region/Thinning_type2/Results/"
 dir.create(resFolder, showWarnings = FALSE, recursive = TRUE)
-load(file = "simulation_studies/Trust_region/Thinning_type2/Data/study1.RDa")
+load(file = "simulation_studies/Thomas/Trust_region/Thinning_type2/Data/study1.RDa")
 
 r_vec   <- seq(from = 0, to = 3, by = 0.05)   # the grid study1's K_hat is on
 spacing <- 5                                  # as in data_generation.R

@@ -5,10 +5,10 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
-source(file = "simulation_studies/Trust_region/Helper_scripts/results_analysis_helpers.R")
+source(file = "simulation_studies/Thomas/Trust_region/Helper_scripts/results_analysis_helpers.R")
 
 thinningType <- 2
-studyFolder <- paste0("simulation_studies/Trust_region/Thinning_type", thinningType, "/")
+studyFolder <- paste0("simulation_studies/Thomas/Trust_region/Thinning_type", thinningType, "/")
 
 type <- c("quad", "sample_error")
 

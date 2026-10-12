@@ -20,7 +20,7 @@ suppressPackageStartupMessages({
 # file names are the same across types, so sharing one folder would let a run of one type
 # silently overwrite another's.
 study_folder <- function(thinningType){
-  paste0("simulation_studies/Trust_region/Thinning_type", thinningType, "/")
+  paste0("simulation_studies/Thomas/Trust_region/Thinning_type", thinningType, "/")
 }
 
 

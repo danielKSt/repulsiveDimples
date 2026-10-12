@@ -6,7 +6,7 @@ library(patchwork)
 library(repulsiveDimples)
 # Run from the project root. The paths below are relative to this directory, so a second
 # sourcing in the same session fails here, the working directory already being it.
-setwd("simulation_studies/Importance_sampling/")
+setwd("simulation_studies/Thomas/Importance_sampling/")
 
 source("R_scripts/is_analysis_helpers.R")
 load("Results/study4.RDa")

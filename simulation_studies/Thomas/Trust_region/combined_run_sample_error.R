@@ -1,4 +1,4 @@
-source("simulation_studies/Trust_region/Helper_scripts/study_helpers.R")
+source("simulation_studies/Thomas/Trust_region/Helper_scripts/study_helpers.R")
 RNGkind("L'Ecuyer-CMRG")
 
 
