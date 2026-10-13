@@ -1,0 +1,481 @@
+---
+title: "Importance Sampling for the Variance Gamma Process: Study 4"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+params:
+  vg_file: "../Results/study4_varGamma.RDa"
+  thomas_file: "../../../Thomas/Importance_sampling/Results/study4.RDa"
+  repRange: 0.4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+need <- c("plotly", "DT")
+missing <- need[!vapply(need, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing) > 0) {
+  stop("Missing package(s): ", paste(missing, collapse = ", "),
+       '. Install with: install.packages(c("', paste(missing, collapse = '", "'), '"))')
+}
+library(plotly)
+library(DT)
+```
+
+```{r load}
+load_one <- function(f) { e <- new.env(); load(f, envir = e); get(ls(e)[1], envir = e) }
+studies <- list(VarGamma = load_one(params$vg_file),
+                Thomas   = load_one(params$thomas_file))
+nu <- studies$VarGamma[[1]]$nu
+repRange <- params$repRange
+side <- with(studies$VarGamma[[1]]$res_cases[[1]], xlims_sim[2] - xlims_sim[1])
+Wp <- side + 2 * repRange   # side of the enlarged window W' the daughters live on
+```
+
+```{r helpers}
+# Effective sample size of a set of importance weights. Ranges from 1 (one
+# realization carries all the weight) to n (all weights equal).
+ess <- function(w) sum(w)^2 / sum(w^2)
+
+# K-function contrast, matching the optimizer's objective.
+K_contrast <- function(K_true, K_est, q = 1/4) {
+  dr <- K_true$r[2] - K_true$r[1]
+  sum((K_true$border^q - K_est$border^q)^2) * dr
+}
+
+# Relative RMS error in K.
+K_relerr_pct <- function(K_true, K_est) {
+  100 * sqrt(mean((K_est$border - K_true$border)^2)) / sqrt(mean(K_true$border^2))
+}
+
+# Parameters are stored on the log scale, so a delta is a log difference; the
+# natural-unit effect is the multiplicative factor exp(delta).
+delta_of <- function(par_0, par_goal) {
+  d <- unlist(par_0 - par_goal)
+  nz <- names(d)[abs(d) > 1e-8]
+  if (length(nz) == 0) list(par = "none", value = 0, label = "delta = 0 (par_0 = par_goal)")
+  else if (length(nz) == 1)
+    list(par = nz, value = d[[nz]],
+         label = sprintf("%s %+.2f (x%.2f)", nz, d[[nz]], exp(d[[nz]])))
+  else list(par = "multiple", value = NA_real_,
+            label = paste(sprintf("%s %+.2f (x%.2f)", nz, d[nz], exp(d[nz])), collapse = ", "))
+}
+
+fmt_par <- function(p) {
+  v <- exp(unlist(p))
+  paste(sprintf("%s=%.3g", names(v), v), collapse = ", ")
+}
+
+# The kernel's dispersal parameter is omega for the Thomas process and scale for the
+# Variance gamma process. They are compared on the same log-delta grid, so both are
+# called "scale" where the two studies are put side by side.
+param_of <- function(p) c(none = "none", kappa = "kappa", omega = "scale", scale = "scale",
+                          mu = "mu", multiple = "multiple")[[p]]
+
+# Parent windows. spatstat pads W' by 4*omega per side for rThomas and by
+# clusterradius() (thresh = 0.001) for rVarGamma, which at nu = 1/2 is 9.23*scale.
+pad_of <- function(kernel, s) {
+  if (kernel == "Thomas") 4 * s
+  else spatstat.random::clusterradius("VarGamma", scale = s, nu = nu, thresh = 0.001)
+}
+B_area_of <- function(kernel, s) (Wp + 2 * pad_of(kernel, s))^2
+
+# Expected number of parents per realization. Thomas study 4 was simulated before
+# 2026-10-12 with spatstat's nonempty = TRUE, which only keeps parents with at least
+# one daughter, so its parents have intensity kappa*(1 - exp(-mu)) rather than kappa.
+E_parents_of <- function(kernel, kappa, s, mu) {
+  kappa * B_area_of(kernel, s) * (if (kernel == "Thomas") 1 - exp(-mu) else 1)
+}
+
+# Mean raw weight to expect under nonempty = TRUE (Thomas study 4). For a kappa shift
+# the normalising constant is exp(-|B| exp(-mu) (kappa - kappa_0)). For a mu shift it is
+# exp(kappa exp(-mu_0) int_B (1 - exp(-(mu - mu_0) p_W(c))) dc), integrated on a grid,
+# with the Gaussian p_W(c) factorising over the two coordinates.
+thomas_mean_w <- function(param, kappa, kappa_0, mu, mu_0, omega, n_grid = 401) {
+  B_side <- Wp + 8 * omega
+  if (param == "kappa") return(exp(-B_side^2 * exp(-mu) * (kappa - kappa_0)))
+  if (param != "mu") return(NA_real_)
+  h <- B_side / n_grid
+  g <- seq(Wp / 2 - B_side / 2 + h / 2, Wp / 2 + B_side / 2 - h / 2, length.out = n_grid)
+  pw <- stats::pnorm(Wp, g, omega) - stats::pnorm(0, g, omega)
+  exp(kappa * exp(-mu_0) * sum(1 - exp(-(mu - mu_0) * outer(pw, pw))) * h^2)
+}
+
+# Flatten one group (a par_goal with its delta cases) into one row per case.
+group_rows <- function(grp, kernel, group_id) {
+  goal <- exp(unlist(grp$par_goal))
+  do.call(rbind, lapply(seq_along(grp$res_cases), function(j) {
+    cs <- grp$res_cases[[j]]
+    ri <- cs$res_is
+    n_last <- length(ri$rho_is)
+    d  <- delta_of(cs$par_0, grp$par_goal)
+    p0 <- exp(unlist(cs$par_0))
+    Kt <- grp$res_true$K_true
+    w  <- ri$w_is
+    data.frame(
+      kernel = kernel, group = group_id, case = j,
+      delta = d$label, delta_par = d$par, param = param_of(d$par),
+      delta_log = d$value, delta_factor = exp(d$value),
+      goal = fmt_par(grp$par_goal), sim_par = fmt_par(cs$par_0),
+      kappa_goal = goal[[1]], scale_goal = goal[[2]], mu_goal = goal[[3]],
+      kappa_0 = p0[[1]], scale_0 = p0[[2]], mu_0 = p0[[3]],
+      nSims = length(w),
+      ESS = ess(w),
+      ESS_pct = 100 * ess(w) / length(w),
+      mean_w = mean(w),
+      rho_true = grp$res_true$rho_true,
+      rho_base = ri$rho_base,
+      rho_norm = ri$rho_is_norm[n_last],
+      rho_unnorm = ri$rho_is[n_last],
+      rho_relerr_norm_pct   = 100 * (ri$rho_is_norm[n_last] - grp$res_true$rho_true) / grp$res_true$rho_true,
+      rho_relerr_unnorm_pct = 100 * (ri$rho_is[n_last] - grp$res_true$rho_true) / grp$res_true$rho_true,
+      rho_relerr_base_pct   = 100 * (ri$rho_base - grp$res_true$rho_true) / grp$res_true$rho_true,
+      K_relerr_norm_pct = K_relerr_pct(Kt, ri$K_is_norm[[n_last]]),
+      K_relerr_base_pct = K_relerr_pct(Kt, ri$K_base),
+      K_contrast_norm   = K_contrast(Kt, ri$K_is_norm[[n_last]]),
+      K_contrast_unnorm = K_contrast(Kt, ri$K_is[[n_last]]),
+      K_contrast_base   = K_contrast(Kt, ri$K_base),
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+```
+
+```{r rows}
+cases <- do.call(rbind, lapply(names(studies), function(k) {
+  do.call(rbind, lapply(seq_along(studies[[k]]), function(g) group_rows(studies[[k]][[g]], k, g)))
+}))
+
+# Expected point counts per realization of the baseline ensemble, at par_0. The
+# daughter count is the unthinned points in W'.
+cases$B_area <- mapply(B_area_of, cases$kernel, cases$scale_0)
+cases$E_parents <- mapply(E_parents_of, cases$kernel, cases$kappa_0, cases$scale_0, cases$mu_0)
+cases$E_daughters <- cases$kappa_0 * cases$mu_0 * Wp^2
+cases$E_total_latent <- cases$E_parents + cases$E_daughters
+
+# ESS predicted from those counts, for the kappa and mu shifts (see the section on what
+# sets the ESS).
+r <- exp(-cases$delta_log)
+cases$ESS_pred_pct <- ifelse(cases$param == "kappa", 100 * exp(-cases$E_parents * (r - 1)^2),
+                      ifelse(cases$param == "mu",    100 * exp(-cases$E_daughters * (r - 1)^2),
+                             NA_real_))
+
+# Mean raw weight to expect: 1 when the parents were simulated with nonempty = FALSE.
+cases$mean_w_pred <- ifelse(cases$kernel == "VarGamma", 1,
+  mapply(thomas_mean_w, cases$param, cases$kappa_goal, cases$kappa_0,
+         cases$mu_goal, cases$mu_0, cases$scale_0))
+
+cases$label <- sprintf("%s, group %d | %s | ESS=%.3g%%", cases$kernel, cases$group, cases$delta, cases$ESS_pct)
+vg <- cases[cases$kernel == "VarGamma", ]
+```
+
+```{r findings}
+usable <- cases$param %in% c("kappa", "scale", "mu") & cases$ESS_pct >= 1
+max_rho_err <- tapply(abs(cases$rho_relerr_norm_pct[usable]), cases$kernel[usable], max)
+max_K_err   <- tapply(cases$K_relerr_norm_pct[usable], cases$kernel[usable], max)
+
+goal_rows <- cases[cases$param == "none", ]
+lambda <- function(k, g) goal_rows$E_parents[goal_rows$kernel == k & goal_rows$group == g]
+
+# Below a few percent the sample ESS and the sample mean of the weights are themselves
+# too noisy to compare with a prediction, so the agreement is summarised above that.
+ess_ratio_of <- function(pp, thr) {
+  ok <- cases$param == pp & !is.na(cases$ESS_pred_pct) & cases$ESS_pred_pct >= thr
+  list(n = sum(ok), range = range(cases$ESS_pct[ok] / cases$ESS_pred_pct[ok]))
+}
+ess_kappa <- ess_ratio_of("kappa", 5)
+ess_mu    <- ess_ratio_of("mu", 10)
+
+reliable <- cases$param %in% c("kappa", "scale", "mu") & cases$ESS_pct >= 5
+vg_mw <- cases$mean_w[cases$kernel == "VarGamma" & reliable]
+th_rows <- cases$kernel == "Thomas" & cases$param %in% c("kappa", "mu") & reliable
+th_mw_ratio <- cases$mean_w[th_rows] / cases$mean_w_pred[th_rows]
+th_mw_all <- cases$mean_w[cases$kernel == "Thomas" & cases$param %in% c("kappa", "mu") & usable]
+```
+
+This report covers **study 4 for the Variance gamma process** (`r basename(params$vg_file)`), and compares it with study 4 for the Thomas process (`r basename(params$thomas_file)`), whose design it repeats.
+
+- **The process.** A Neyman-Scott process with the Variance gamma kernel at $\nu = `r nu`$, where the kernel is the exponential kernel $k(u) = e^{-\|u\|/\sigma}/(2\pi\sigma^2)$, with Matérn type II thinning at repulsion range `r repRange`.
+- **The design.** The same two parameter groups, perturbation grids, `r side`x`r side` window, `nSims` and `nTrue` as Thomas study 4. Each group keeps study 4's $\kappa$ and $\mu$ and sets $\sigma = \omega/\sqrt{3}$: at $\nu = 1/2$ a daughter's mean squared distance from its parent is $6\sigma^2$, against $2\omega^2$ for the Thomas process, so the clusters are the same size. The scale is perturbed on the Thomas study's $\omega$ grid, and where the two studies are put side by side both are called **scale**.
+- **One difference besides the kernel.** Thomas study 4 was simulated before the simulators were changed to `nonempty = FALSE` on 2026-10-12, so its parents exclude those without daughters. This does not affect the self-normalized estimates, but it does affect the unnormalized ones and the parent counts, see [the last section](#unnormalized).
+
+All parameters are stored on the **log scale**, so a delta of `+0.40` means the simulation parameter is `exp(0.40) = 1.49` times the target. **ESS** is the effective sample size $\left(\sum w_i\right)^2 / \sum w_i^2$, and `ESS_pct` is it as a percentage of `nSims`.
+
+```{r design-table}
+design <- goal_rows[order(goal_rows$group, goal_rows$kernel),
+                    c("group", "kernel", "kappa_goal", "scale_goal", "mu_goal", "B_area", "E_parents", "E_daughters")]
+design$rms_radius <- ifelse(design$kernel == "Thomas", sqrt(2) * design$scale_goal, sqrt(6) * design$scale_goal)
+design$padding <- mapply(pad_of, design$kernel, design$scale_goal)
+knitr::kable(design[, c("group", "kernel", "kappa_goal", "scale_goal", "mu_goal", "rms_radius",
+                        "padding", "B_area", "E_parents", "E_daughters")],
+             digits = 3, row.names = FALSE,
+             col.names = c("group", "kernel", "kappa", "omega / scale", "mu", "rms cluster radius",
+                           "parent window padding", "|B|", "E[parents]", "E[unthinned daughters]"),
+             caption = "The two groups at their target parameters. The parent window B is W' padded on every side; E[parents] counts the parents in B and E[unthinned daughters] the daughters in W'.")
+```
+
+# Main findings
+
+- **Self-normalized importance sampling works as well as for the Thomas process.** Among the cases whose ESS is at least 1% of `nSims`, the largest intensity error is `r sprintf("%.2f", max_rho_err[["VarGamma"]])`% for the Variance gamma process against `r sprintf("%.2f", max_rho_err[["Thomas"]])`% for the Thomas process, and the largest relative RMS error in K is `r sprintf("%.2f", max_K_err[["VarGamma"]])`% against `r sprintf("%.2f", max_K_err[["Thomas"]])`%.
+- **The ESS of a $\kappa$ or $\mu$ perturbation follows from a point count.** A $\kappa$ shift is governed by the expected number of parents in the simulation window $B$, and a $\mu$ shift by the expected number of unthinned daughters in $W'$. For $\kappa$ the prediction is exact, and in the `r ess_kappa$n` cases where it is at least 5% the observed ESS is `r sprintf("%.2f", ess_kappa$range[1])` to `r sprintf("%.2f", ess_kappa$range[2])` times it. For $\mu$ it is a first-order approximation, and in the `r ess_mu$n` cases where it is at least 10% the observed ESS is `r sprintf("%.2f", ess_mu$range[1])` to `r sprintf("%.2f", ess_mu$range[2])` times it. At an ESS of a few percent the sample ESS itself becomes too noisy for the comparison.
+- **So the Variance gamma process tolerates smaller $\kappa$ shifts.** Its parent window is padded further ($9.23\sigma = 5.33\omega$ per side, against $4\omega$), so $B$ holds `r sprintf("%.0f", lambda("VarGamma", 1))` parents against `r sprintf("%.0f", lambda("Thomas", 1))` in group 1, and `r sprintf("%.0f", lambda("VarGamma", 2))` against `r sprintf("%.0f", lambda("Thomas", 2))` in group 2. The Thomas counts are also lowered by `nonempty = TRUE`, by 9% in group 2. Most of either window is padding, so the $\kappa$ tolerance is set more by how far spatstat pads the parent window than by the observation window.
+- **The $\mu$ curves of the two processes are close,** since the design gives them the same daughter count. In group 2 the Thomas ESS is somewhat higher at the larger shifts. The scale curves are close to the Thomas process's $\omega$ curves: nearly identical in group 2, and in group 1 better for small shifts but worse at $-0.4$.
+- **Unnormalized importance sampling is unbiased here, unlike in Thomas study 4.** In the cases with an ESS of at least 5%, the Variance gamma process's mean raw weight lies between `r sprintf("%.3f", min(vg_mw))` and `r sprintf("%.3f", max(vg_mw))`, while Thomas study 4's is within `r sprintf("%.1f", 100 * max(abs(th_mw_ratio - 1)))`% of what `nonempty = TRUE` predicts. Across its $\kappa$ and $\mu$ cases with an ESS of at least 1%, that puts Thomas study 4's mean raw weight anywhere from `r sprintf("%.3f", min(th_mw_all))` to `r sprintf("%.2f", max(th_mw_all))`, and the unnormalized estimates in the Thomas report are off by that factor.
+
+# Per-case results
+
+One row per (kernel, group, case), evaluated at the largest `nSamples`. Filter on `kernel` to see one process. Rows are shaded where the normalized intensity estimate is more than 10% off, and where ESS falls below 1% of `nSims`.
+
+```{r case-table}
+show <- cases[, c("kernel","group","case","delta","param","delta_log","goal",
+                  "E_parents","E_daughters","nSims","ESS","ESS_pct","ESS_pred_pct","mean_w",
+                  "rho_relerr_norm_pct","rho_relerr_unnorm_pct","rho_relerr_base_pct",
+                  "K_relerr_norm_pct","K_relerr_base_pct","K_contrast_norm")]
+datatable(show, rownames = FALSE, filter = "top",
+          options = list(pageLength = 25, scrollX = TRUE,
+                         order = list(list(0, "desc"), list(1, "asc"), list(2, "asc")))) |>
+  formatRound(c("ESS", "E_parents", "E_daughters"), 1) |>
+  formatRound("delta_log", 2) |>
+  formatSignif(c("ESS_pct", "ESS_pred_pct", "mean_w"), 3) |>
+  formatRound(c("rho_relerr_norm_pct","rho_relerr_unnorm_pct","rho_relerr_base_pct",
+                "K_relerr_norm_pct","K_relerr_base_pct"), 2) |>
+  formatSignif("K_contrast_norm", 3) |>
+  formatStyle("kernel", fontWeight = "bold",
+              color = styleEqual(c("VarGamma","Thomas"), c("#1b7837","#2166ac"))) |>
+  formatStyle("rho_relerr_norm_pct",
+              backgroundColor = styleInterval(c(-10, 10), c("#f8d7da", "white", "#f8d7da"))) |>
+  formatStyle("ESS_pct", backgroundColor = styleInterval(1, c("#f8d7da", "white")))
+```
+
+# ESS against the size of the perturbation
+
+Cases at the same log-delta differ only in the kernel. Use the dropdown to switch which parameter is perturbed; for the scale, the Thomas lines perturb $\omega$.
+
+```{r ess-vs-delta}
+single <- cases[cases$param %in% c("kappa", "scale", "mu"), ]
+pars <- c("kappa", "scale", "mu")
+style <- list(VarGamma = list(col = "#1b7837", sym = "circle"),
+              Thomas   = list(col = "#2166ac", sym = "diamond"))
+
+p <- plot_ly(); idx <- 0; trace_of <- list()
+for (pp in pars) {
+  for (k in names(style)) for (g in sort(unique(single$group))) {
+    d <- single[single$param == pp & single$kernel == k & single$group == g, ]
+    d <- d[order(d$delta_log), ]
+    p <- p |> add_trace(x = d$delta_log, y = d$ESS_pct, type = "scatter", mode = "lines+markers",
+                        name = sprintf("%s, group %d", k, g), text = d$label, hoverinfo = "text",
+                        line = list(color = style[[k]]$col, dash = if (g == 1) "solid" else "dot"),
+                        marker = list(color = style[[k]]$col, symbol = style[[k]]$sym, size = 8),
+                        visible = (pp == "kappa"))
+    idx <- idx + 1
+    trace_of[[paste(pp, k, g)]] <- idx
+  }
+}
+n_total <- idx
+buttons <- lapply(pars, function(pp) {
+  vis <- rep(FALSE, n_total)
+  for (nm in names(trace_of)) if (startsWith(nm, paste0(pp, " "))) vis[trace_of[[nm]]] <- TRUE
+  list(method = "restyle", args = list("visible", vis),
+       label = if (pp == "scale") "scale (omega for Thomas)" else pp)
+})
+p |> layout(xaxis = list(title = "log-scale delta applied to the perturbed parameter"),
+            yaxis = list(title = "ESS as % of nSims", type = "log"),
+            updatemenus = list(list(active = 0, x = 1, y = 1.15,
+                                    xanchor = "right", buttons = buttons)))
+```
+
+# What sets the ESS
+
+For a perturbation of $\kappa$ by $\delta$, with the ensemble simulated at $\kappa_0 = \kappa e^{\delta}$, only the parent part of the weight changes, and it is proportional to $(\kappa/\kappa_0)^N$ with $N$ the number of parents in $B$. $N$ is Poisson with mean $\lambda_0$, the expected parent count, and for weights of that form
+$$\frac{\mathrm{E}[w]^2}{\mathrm{E}[w^2]} = \exp\!\left(-\lambda_0\left(e^{-\delta} - 1\right)^2\right),$$
+which is the fraction of `nSims` the ESS converges to. For a perturbation of $\mu$, the weight is $(\mu/\mu_0)^{N_d} e^{-(\mu - \mu_0) S}$ given the parents, with $N_d$ the unthinned daughters in $W'$ and $S = \sum_j p_W(c_j)$. To first order, replacing $S$ by its mean, the same formula holds with $\lambda_0$ the expected daughter count $\kappa\mu_0|W'|$, so this prediction is an approximation where the one for $\kappa$ is exact. No formula of this kind is derived for the scale.
+
+The plot compares these predictions with the observed ESS. Predictions far below 0.1% are not matched, and are not meant to be: there the sample of `r format(cases$nSims[1], big.mark = ",")` never reaches the tail of the weight distribution that drives the true ESS down, so the observed ESS sits at a floor set by the few largest weights and overstates the true one.
+
+```{r ess-pred}
+pr <- cases[!is.na(cases$ESS_pred_pct), ]
+lims <- c(1e-3, 100)
+p <- plot_ly()
+for (k in names(style)) for (pp in c("kappa", "mu")) {
+  d <- pr[pr$kernel == k & pr$param == pp, ]
+  p <- p |> add_markers(x = pmax(d$ESS_pred_pct, lims[1]), y = d$ESS_pct, text = d$label,
+                        hoverinfo = "text", name = paste0(k, ", ", pp),
+                        marker = list(size = 9, color = style[[k]]$col,
+                                      symbol = if (pp == "kappa") "circle" else "diamond-open"))
+}
+p |>
+  add_lines(x = lims, y = lims, name = "observed = predicted",
+            line = list(color = "grey", dash = "dash")) |>
+  layout(xaxis = list(title = "predicted ESS as % of nSims (predictions below 0.001% drawn at 0.001%)",
+                      type = "log"),
+         yaxis = list(title = "observed ESS as % of nSims", type = "log"))
+```
+
+The parent window $B$ is where the two processes differ. spatstat pads $W'$ by $9.23\sigma$ per side for the Variance gamma kernel at $\nu = 1/2$ (its default `thresh = 0.001`; a daughter lands further than that from its parent with probability 0.1%), and by a fixed $4\omega$ for the Thomas process (probability 0.03%). All parents in $B$ enter the $\kappa$ part of the weight, including the many in the padding that rarely put a daughter in $W'$. A tighter padding would raise the $\kappa$ ESS, at the cost of a larger truncation error in the model the weights describe.
+
+# Convergence against sample size {.tabset}
+
+Each panel shows how the estimate moves as `nSamples` grows, for the unnormalized and self-normalized weighting schemes. Use the dropdown at the top right to switch between perturbation cases.
+
+```{r conv-funs}
+conv_plot <- function(grp, what = c("rho", "K")) {
+  what <- match.arg(what)
+  labels <- vapply(grp$res_cases,
+                   function(cs) delta_of(cs$par_0, grp$par_goal)$label, character(1))
+  p <- plot_ly(); idx <- 0; trace_of <- list()
+
+  for (i in seq_along(grp$res_cases)) {
+    ri <- grp$res_cases[[i]]$res_is
+    if (what == "rho") {
+      y_u <- ri$rho_is; y_n <- ri$rho_is_norm
+    } else {
+      Kt <- grp$res_true$K_true
+      y_u <- vapply(ri$K_is,      function(k) K_contrast(Kt, k), numeric(1))
+      y_n <- vapply(ri$K_is_norm, function(k) K_contrast(Kt, k), numeric(1))
+    }
+    p <- p |> add_lines(x = grp$nSamples, y = y_u, name = "unnormalized",
+                        legendgroup = "u", line = list(color = "firebrick", dash = "dot"),
+                        visible = (i == 1))
+    idx <- idx + 1; trace_of[[paste0(i, "u")]] <- idx
+    p <- p |> add_lines(x = grp$nSamples, y = y_n, name = "normalized",
+                        legendgroup = "n", line = list(color = "steelblue"),
+                        visible = (i == 1))
+    idx <- idx + 1; trace_of[[paste0(i, "n")]] <- idx
+  }
+
+  if (what == "rho") {
+    rt <- grp$res_true$rho_true
+    p <- p |> add_lines(x = range(grp$nSamples), y = c(rt, rt), name = "rho_true",
+                        line = list(color = "black", dash = "dash"), visible = TRUE)
+    idx <- idx + 1
+    yaxis <- list(title = "intensity estimate")
+  } else {
+    yaxis <- list(title = "K contrast vs truth (log scale)", type = "log")
+  }
+  n_total <- idx
+
+  buttons <- lapply(seq_along(grp$res_cases), function(i) {
+    vis <- rep(FALSE, n_total)
+    vis[trace_of[[paste0(i, "u")]]] <- TRUE
+    vis[trace_of[[paste0(i, "n")]]] <- TRUE
+    if (what == "rho") vis[n_total] <- TRUE
+    list(method = "restyle", args = list("visible", vis), label = labels[i])
+  })
+
+  p |> layout(xaxis = list(title = "nSamples", type = "log"), yaxis = yaxis,
+              updatemenus = list(list(active = 0, x = 1, y = 1.15,
+                                      xanchor = "right", buttons = buttons)))
+}
+```
+
+```{r conv, results="asis"}
+# print()ing a widget inside a results='asis' loop does not register its JS
+# dependencies on its own; knit_meta_add() does that explicitly.
+for (g in seq_along(studies$VarGamma)) {
+  grp <- studies$VarGamma[[g]]
+  cat(sprintf("\n## Group %d: %s {.tabset}\n\n", g, fmt_par(grp$par_goal)))
+  for (w in c("rho", "K")) {
+    cat(sprintf("\n### %s\n\n", if (w == "rho") "Intensity" else "K contrast"))
+    pl <- conv_plot(grp, w)
+    knitr::knit_meta_add(htmltools::findDependencies(pl))
+    print(htmltools::tagList(pl))
+  }
+}
+```
+
+# Estimation error
+
+## Against ESS
+
+```{r err-vs-ess}
+sc <- cases[cases$param %in% c("kappa", "scale", "mu"), ]
+p <- plot_ly()
+for (k in names(style)) {
+  d <- sc[sc$kernel == k, ]
+  p <- p |>
+    add_markers(x = d$ESS_pct, y = abs(d$rho_relerr_norm_pct), text = d$label, hoverinfo = "text",
+                name = paste(k, "|rho error|"),
+                marker = list(size = 8, opacity = 0.75, color = style[[k]]$col, symbol = "circle")) |>
+    add_markers(x = d$ESS_pct, y = d$K_relerr_norm_pct, text = d$label, hoverinfo = "text",
+                name = paste(k, "K relative RMS error"),
+                marker = list(size = 8, opacity = 0.75, color = style[[k]]$col, symbol = "square-open"))
+}
+p |>
+  layout(xaxis = list(title = "ESS as % of nSims", type = "log"),
+         yaxis = list(title = "relative error of the normalized estimate (%)", type = "log"))
+```
+
+## How far does importance sampling have to move the estimate?
+
+The baseline columns (`rho_relerr_base_pct`, `K_relerr_base_pct`) are the error of the **unweighted** ensemble, i.e. what you would get by ignoring the weights entirely. Points below the dashed line are cases where the weights improved on the unweighted baseline; points above it are cases where reweighting made the estimate worse.
+
+```{r base-vs-is}
+p <- plot_ly()
+for (k in names(style)) {
+  d <- sc[sc$kernel == k, ]
+  p <- p |>
+    add_markers(x = abs(d$rho_relerr_base_pct), y = abs(d$rho_relerr_norm_pct), text = d$label,
+                hoverinfo = "text", name = paste(k, "intensity"),
+                marker = list(size = 8, opacity = 0.75, color = style[[k]]$col, symbol = "circle")) |>
+    add_markers(x = d$K_relerr_base_pct, y = d$K_relerr_norm_pct, text = d$label,
+                hoverinfo = "text", name = paste(k, "K-function"),
+                marker = list(size = 8, opacity = 0.75, color = style[[k]]$col, symbol = "square-open"))
+}
+p |>
+  add_lines(x = c(1e-3, 1e3), y = c(1e-3, 1e3), name = "no improvement",
+            line = list(color = "grey", dash = "dash")) |>
+  layout(xaxis = list(title = "|error| of unweighted baseline (%)", type = "log"),
+         yaxis = list(title = "|error| after importance sampling (%)", type = "log"))
+```
+
+# Unnormalized weights {#unnormalized}
+
+At the full sample size the unnormalized estimate is the normalized one multiplied by the mean raw weight, so the mean raw weight is the factor by which unnormalized importance sampling is off. For a correct likelihood ratio it is 1 on average.
+
+Thomas study 4 was simulated with spatstat's `nonempty = TRUE`, which simulates parents at intensity $\kappa(1 - e^{-\mu})$ with zero-truncated cluster sizes. The daughters have the same distribution as without it, so the self-normalized estimates are unaffected, but the weights, which assume Poisson($\kappa$) parents, are then off by a factor whose mean is
+$$\exp\!\left(-|B|\,e^{-\mu}(\kappa - \kappa_0)\right) \text{ for a } \kappa \text{ shift}, \qquad \exp\!\left(\kappa e^{-\mu_0}\int_B \left(1 - e^{-(\mu-\mu_0)\,p_W(c)}\right)\mathrm{d}c\right) \text{ for a } \mu \text{ shift}.$$
+The same setting also explains why the Thomas report measured fewer parents than $\kappa|B|$: with $\mu = 2.4$, a fraction $e^{-2.4} = 9\%$ of the parents is missing. The Variance gamma study was simulated with `nonempty = FALSE`, where the weights are exact and the mean raw weight should be 1.
+
+The plot shows the cases with an ESS of at least 5%. Below that the sample mean of the weights scatters by up to about 10% around its expectation. Lines are the predictions.
+
+```{r mean-w}
+mw <- cases[cases$param %in% c("kappa", "mu") & cases$ESS_pct >= 5, ]
+pred <- cases[cases$param %in% c("kappa", "mu") & cases$kernel == "Thomas", ]
+p <- plot_ly(); idx <- 0; trace_of <- list()
+for (pp in c("kappa", "mu")) {
+  for (k in names(style)) for (g in 1:2) {
+    d <- mw[mw$param == pp & mw$kernel == k & mw$group == g, ]
+    p <- p |> add_markers(x = d$delta_log, y = d$mean_w, text = d$label, hoverinfo = "text",
+                          name = sprintf("%s, group %d, observed", k, g),
+                          marker = list(color = style[[k]]$col, symbol = style[[k]]$sym, size = 9,
+                                        opacity = if (g == 1) 1 else 0.6),
+                          visible = (pp == "kappa"))
+    idx <- idx + 1; trace_of[[paste(pp, k, g, "o")]] <- idx
+    dp <- if (k == "Thomas") pred[pred$param == pp & pred$group == g, ] else
+      data.frame(delta_log = range(mw$delta_log), mean_w_pred = 1)
+    dp <- dp[order(dp$delta_log), ]
+    dp <- dp[dp$delta_log >= min(mw$delta_log) & dp$delta_log <= max(mw$delta_log), ]
+    p <- p |> add_lines(x = dp$delta_log, y = dp$mean_w_pred, hoverinfo = "skip",
+                        name = sprintf("%s, group %d, predicted", k, g),
+                        line = list(color = style[[k]]$col, dash = if (g == 1) "solid" else "dot"),
+                        visible = (pp == "kappa"))
+    idx <- idx + 1; trace_of[[paste(pp, k, g, "p")]] <- idx
+  }
+}
+n_total <- idx
+buttons <- lapply(c("kappa", "mu"), function(pp) {
+  vis <- rep(FALSE, n_total)
+  for (nm in names(trace_of)) if (startsWith(nm, paste0(pp, " "))) vis[trace_of[[nm]]] <- TRUE
+  list(method = "restyle", args = list("visible", vis), label = pp)
+})
+p |> layout(xaxis = list(title = "log-scale delta applied to the perturbed parameter"),
+            yaxis = list(title = "mean raw weight", type = "log"),
+            updatemenus = list(list(active = 0, x = 1, y = 1.15,
+                                    xanchor = "right", buttons = buttons)))
+```
+
+The earlier conclusion that unnormalized importance sampling is far less reliable than self-normalized importance sampling rests on Thomas results simulated this way, so it largely reflects this simulation setting rather than the weights themselves. Re-running Thomas study 4 with the current simulator would separate the two if that comparison is to be reported.
