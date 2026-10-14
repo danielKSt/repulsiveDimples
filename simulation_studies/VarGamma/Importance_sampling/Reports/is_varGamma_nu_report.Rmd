@@ -1,0 +1,402 @@
+---
+title: "Importance Sampling for the Variance Gamma Process: Perturbing nu"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+params:
+  nu_file: "../Results/studyNu_varGamma.RDa"
+  study4_file: "../Results/study4_varGamma.RDa"
+  repRange: 0.4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+need <- c("plotly", "DT")
+missing <- need[!vapply(need, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing) > 0) {
+  stop("Missing package(s): ", paste(missing, collapse = ", "),
+       '. Install with: install.packages(c("', paste(missing, collapse = '", "'), '"))')
+}
+library(plotly)
+library(DT)
+```
+
+```{r load}
+load_one <- function(f) { e <- new.env(); load(f, envir = e); get(ls(e)[1], envir = e) }
+nuStudy <- load_one(params$nu_file)
+study4  <- load_one(params$study4_file)
+repRange <- params$repRange
+side <- with(nuStudy[[1]]$res_cases[[1]], xlims_sim[2] - xlims_sim[1])
+Wp <- side + 2 * repRange   # side of the enlarged window W' the daughters live on
+nu_goal <- nuStudy[[1]]$par_goal$nu
+```
+
+```{r helpers}
+# Effective sample size of a set of importance weights. Ranges from 1 (one
+# realization carries all the weight) to n (all weights equal).
+ess <- function(w) sum(w)^2 / sum(w^2)
+
+# K-function contrast, matching the optimizer's objective.
+K_contrast <- function(K_true, K_est, q = 1/4) {
+  dr <- K_true$r[2] - K_true$r[1]
+  sum((K_true$border^q - K_est$border^q)^2) * dr
+}
+
+# Relative RMS error in K.
+K_relerr_pct <- function(K_true, K_est) {
+  100 * sqrt(mean((K_est$border - K_true$border)^2)) / sqrt(mean(K_true$border^2))
+}
+
+# kappa, scale and mu are stored on the log scale and nu on its own scale, so a delta
+# in nu is additive and the others are log differences.
+delta_of <- function(par_0, par_goal) {
+  d <- unlist(par_0 - par_goal)
+  nz <- names(d)[abs(d) > 1e-8]
+  if (length(nz) == 0) return(list(par = "none", value = 0, label = "delta = 0 (par_0 = par_goal)"))
+  if (length(nz) > 1) return(list(par = "multiple", value = NA_real_, label = "multiple"))
+  label <- if (nz == "nu") sprintf("nu %+.2f (nu_0 = %.2f)", d[[nz]], par_0$nu)
+           else sprintf("%s %+.2f (x%.2f)", nz, d[[nz]], exp(d[[nz]]))
+  list(par = nz, value = d[[nz]], label = label)
+}
+
+fmt_par <- function(p) {
+  v <- unlist(p)
+  v[c("kappa", "scale", "mu")] <- exp(v[c("kappa", "scale", "mu")])
+  paste(sprintf("%s=%.3g", names(v), v), collapse = ", ")
+}
+
+# At fixed scale, nu changes the size of the clusters as well as the shape of the
+# kernel: a daughter's mean squared distance from its parent is 4*scale^2*(nu + 1).
+rms_radius <- function(scale, nu) 2 * scale * sqrt(nu + 1)
+
+# Parent window padding: clusterradius() with spatstat's default thresh = 0.001.
+pad_of <- function(scale, nu) spatstat.random::clusterradius("VarGamma", scale = scale, nu = nu, thresh = 0.001)
+
+# Flatten one group (a par_goal with its delta cases) into one row per case.
+group_rows <- function(grp, study, group_id) {
+  goal <- unlist(grp$par_goal)
+  do.call(rbind, lapply(seq_along(grp$res_cases), function(j) {
+    cs <- grp$res_cases[[j]]
+    ri <- cs$res_is
+    n_last <- length(ri$rho_is)
+    d  <- delta_of(cs$par_0, grp$par_goal)
+    scale_0 <- exp(cs$par_0$scale)
+    nu_0 <- if (is.null(cs$par_0$nu)) cs$nu else cs$par_0$nu
+    Kt <- grp$res_true$K_true
+    w  <- ri$w_is
+    data.frame(
+      study = study, group = group_id, case = j,
+      delta = d$label, delta_par = d$par, delta_value = d$value,
+      goal = fmt_par(grp$par_goal),
+      scale_0 = scale_0, nu_0 = nu_0,
+      # log change in the rms cluster radius between the simulation and the target
+      log_size_change = log(rms_radius(scale_0, nu_0) / rms_radius(exp(goal[["scale"]]), grp$nu)),
+      E_parents = exp(cs$par_0$kappa) * (Wp + 2 * pad_of(scale_0, nu_0))^2,
+      nSims = length(w),
+      ESS = ess(w),
+      ESS_pct = 100 * ess(w) / length(w),
+      mean_w = mean(w),
+      rho_true = grp$res_true$rho_true,
+      rho_relerr_norm_pct   = 100 * (ri$rho_is_norm[n_last] - grp$res_true$rho_true) / grp$res_true$rho_true,
+      rho_relerr_unnorm_pct = 100 * (ri$rho_is[n_last] - grp$res_true$rho_true) / grp$res_true$rho_true,
+      rho_relerr_base_pct   = 100 * (ri$rho_base - grp$res_true$rho_true) / grp$res_true$rho_true,
+      K_relerr_norm_pct = K_relerr_pct(Kt, ri$K_is_norm[[n_last]]),
+      K_relerr_base_pct = K_relerr_pct(Kt, ri$K_base),
+      K_contrast_norm   = K_contrast(Kt, ri$K_is_norm[[n_last]]),
+      stringsAsFactors = FALSE
+    )
+  }))
+}
+```
+
+```{r rows}
+cases <- do.call(rbind, lapply(seq_along(nuStudy), function(g) group_rows(nuStudy[[g]], "nu", g)))
+cases$label <- sprintf("group %d | %s | ESS=%.3g%%", cases$group, cases$delta, cases$ESS_pct)
+
+# Study 4's scale perturbations, and its unperturbed anchor, for the comparison at
+# equal change in cluster size.
+s4 <- do.call(rbind, lapply(seq_along(study4), function(g) group_rows(study4[[g]], "study4", g)))
+s4_scale <- s4[s4$delta_par %in% c("none", "scale"), ]
+s4_scale$label <- sprintf("study 4, group %d | %s | ESS=%.3g%%", s4_scale$group, s4_scale$delta, s4_scale$ESS_pct)
+```
+
+```{r findings}
+pert <- cases[cases$delta_par == "nu", ]
+
+# The run of deltas around 0, on either side, over which the ESS stays at least 20%.
+ess_range <- function(g, thr = 20) {
+  d <- pert[pert$group == g, ]
+  d <- d[order(d$delta_value), ]
+  neg <- rev(d$delta_value[d$delta_value < 0]); neg_ok <- rev(d$ESS_pct[d$delta_value < 0]) >= thr
+  pos <- d$delta_value[d$delta_value > 0];      pos_ok <- d$ESS_pct[d$delta_value > 0] >= thr
+  c(lo = if (all(neg_ok)) min(neg) else if (neg_ok[1]) neg[which(!neg_ok)[1] - 1] else 0,
+    hi = if (all(pos_ok)) max(pos) else if (pos_ok[1]) pos[which(!pos_ok)[1] - 1] else 0)
+}
+rng <- lapply(1:2, ess_range)
+
+ess_at <- function(g, dv) pert$ESS_pct[pert$group == g & abs(pert$delta_value - dv) < 1e-8]
+
+usable <- pert$ESS_pct >= 1
+max_rho_err <- max(abs(pert$rho_relerr_norm_pct[usable]))
+max_rho_base <- max(abs(pert$rho_relerr_base_pct[usable]))
+max_K_err <- max(pert$K_relerr_norm_pct[usable])
+max_K_base <- max(pert$K_relerr_base_pct[usable])
+
+reliable <- pert$ESS_pct >= 5
+mw_range <- range(pert$mean_w[reliable])
+
+# Expected number of parents within one rms cluster radius of a point: how much the
+# clusters overlap.
+goal_rows <- cases[cases$delta_par == "none", ]
+overlap <- sapply(1:2, function(g) {
+  p <- exp(unlist(nuStudy[[g]]$par_goal[c("kappa", "scale", "mu")]))
+  p[["kappa"]] * pi * rms_radius(p[["scale"]], nu_goal)^2
+})
+
+# nu against scale at equal change in cluster size: study 4's scale curve, anchor
+# included, interpolated log-linearly at each nu case's size change.
+cmp <- do.call(rbind, lapply(1:2, function(g) {
+  b <- s4_scale[s4_scale$group == g, ]
+  b <- b[order(b$log_size_change), ]
+  a <- pert[pert$group == g, ]
+  a$ESS_scale_pct <- exp(approx(b$log_size_change, log(b$ESS_pct), a$log_size_change)$y)
+  a
+}))
+cmp$ratio <- cmp$ESS_pct / cmp$ESS_scale_pct
+small <- abs(cmp$log_size_change) <= 0.05
+larger <- abs(cmp$log_size_change) > 0.05 & cmp$ESS_pct >= 1 & cmp$ESS_scale_pct >= 1
+```
+
+This report covers the **study of perturbing $\nu$** for the Variance gamma process (`r basename(params$nu_file)`). It uses the two groups of $(\kappa, \sigma, \mu)$ and the window of the Variance gamma study 4 (`r basename(params$study4_file)`). It holds those three fixed and simulates the ensembles at $\nu_0 = \nu + \delta$ around the target $\nu = `r nu_goal`$.
+
+- **$\nu$ is perturbed additively**, on its own scale rather than the log scale, since it can be negative. The kernel needs $\nu > -1$, but spatstat's `rVarGamma` refuses $\nu \le -1/2$, so the grid stops at $\delta = -0.9$, i.e. $\nu_0 = -0.4$.
+- **At fixed $\sigma$, $\nu$ changes the cluster size as well as the shape of the kernel.** A daughter's mean squared distance from its parent is $4\sigma^2(\nu + 1)$, so the rms cluster radius is $2\sigma\sqrt{\nu + 1}$. The section [comparing with the scale](#vs-scale) uses this to separate the two effects.
+- **Only the daughter part of the weight changes.** With $\kappa$ fixed, the parent density is the same for the ensemble and the target and cancels, even though the parent window $B$ grows with $\nu_0$.
+
+**ESS** is the effective sample size $\left(\sum w_i\right)^2 / \sum w_i^2$, and `ESS_pct` is it as a percentage of `nSims`.
+
+```{r design-table}
+design <- do.call(rbind, lapply(1:2, function(g) {
+  p <- exp(unlist(nuStudy[[g]]$par_goal[c("kappa", "scale", "mu")]))
+  data.frame(group = g, kappa = p[["kappa"]], scale = p[["scale"]], mu = p[["mu"]], nu = nu_goal,
+             rms_radius = rms_radius(p[["scale"]], nu_goal),
+             E_daughters = p[["kappa"]] * p[["mu"]] * Wp^2,
+             overlap = overlap[g],
+             rho_true = nuStudy[[g]]$res_true$rho_true)
+}))
+knitr::kable(design, digits = 3, row.names = FALSE,
+             col.names = c("group", "kappa", "scale", "mu", "nu", "rms cluster radius",
+                           "E[unthinned daughters]", "parents within one rms radius", "true intensity"),
+             caption = "The two groups at their target parameters. The last but one column is the expected number of parents within one rms cluster radius of a point, a measure of how much the clusters overlap.")
+```
+
+# Main findings
+
+- **Importance sampling handles $\nu$ well over a useful range.** The ESS stays at or above 20% for $\delta$ from `r rng[[1]][["lo"]]` to `r rng[[1]][["hi"]]` in group 1, and from `r rng[[2]][["lo"]]` to `r rng[[2]][["hi"]]` in group 2. Among the cases with an ESS of at least 1%, the self-normalized estimates are within `r sprintf("%.2f", max_rho_err)`% of the true intensity and `r sprintf("%.2f", max_K_err)`% (relative RMS) of the true K-function. Simply ignoring the weights leaves errors of up to `r sprintf("%.1f", max_rho_base)`% and `r sprintf("%.2f", max_K_base)`% there.
+- **The weights are unbiased.** In every case with an ESS of at least 5%, the mean raw weight lies between `r sprintf("%.3f", mw_range[1])` and `r sprintf("%.3f", mw_range[2])`.
+- **Simulating at a smaller $\nu$ than the target costs more than a larger one.** At $\delta = -0.4$ the ESS is `r sprintf("%.1f", ess_at(1, -0.4))`% and `r sprintf("%.1f", ess_at(2, -0.4))`% (groups 1 and 2), against `r sprintf("%.1f", ess_at(1, 0.4))`% and `r sprintf("%.1f", ess_at(2, 0.4))`% at $+0.4$. At $\pm 0.8$ it is `r sprintf("%.2f", ess_at(1, -0.8))`% and `r sprintf("%.2f", ess_at(2, -0.8))`% against `r sprintf("%.1f", ess_at(1, 0.8))`% and `r sprintf("%.1f", ess_at(2, 0.8))`%. This is the usual rule that the simulation distribution should have the heavier tails. The kernel's tail behaves like $r^{\nu - 1/2} e^{-r/\sigma}$, so a smaller $\nu_0$ gives a lighter tail and smaller clusters, and the weights grow for the daughters furthest from their parents.
+- **Group 2 tolerates much larger shifts than group 1.** Its clusters overlap far more: a point has `r sprintf("%.1f", overlap[2])` parents within one rms cluster radius in group 2, against `r sprintf("%.1f", overlap[1])` in group 1. The intensity at a daughter is then a sum over many parents' kernels, and that sum changes less with the kernel's shape than a single kernel does. The same pattern holds for the scale in study 4.
+- **A $\nu$ shift costs about as much as a scale shift of the same size change for small shifts, and more beyond that.** For changes of up to 0.05 in the log rms radius, the ESS of a $\nu$ shift is `r sprintf("%.2f", min(cmp$ratio[small]))` to `r sprintf("%.2f", max(cmp$ratio[small]))` times that of a scale shift with the same change in cluster size. For larger changes it is `r sprintf("%.2f", min(cmp$ratio[larger]))` to `r sprintf("%.2f", max(cmp$ratio[larger]))` times, so there the change of shape adds to the degeneracy.
+
+# Per-case results
+
+One row per (group, case), evaluated at the largest `nSamples`. Rows are shaded where the normalized intensity estimate is more than 10% off, and where ESS falls below 1% of `nSims`.
+
+```{r case-table}
+show <- cases[, c("group","case","delta","delta_value","nu_0","log_size_change","E_parents","nSims",
+                  "ESS","ESS_pct","mean_w",
+                  "rho_relerr_norm_pct","rho_relerr_unnorm_pct","rho_relerr_base_pct",
+                  "K_relerr_norm_pct","K_relerr_base_pct","K_contrast_norm")]
+datatable(show, rownames = FALSE, filter = "top",
+          options = list(pageLength = 25, scrollX = TRUE,
+                         order = list(list(0, "asc"), list(3, "asc")))) |>
+  formatRound(c("ESS", "E_parents"), 1) |>
+  formatRound(c("delta_value", "nu_0"), 2) |>
+  formatRound("log_size_change", 3) |>
+  formatSignif(c("ESS_pct", "mean_w"), 3) |>
+  formatRound(c("rho_relerr_norm_pct","rho_relerr_unnorm_pct","rho_relerr_base_pct",
+                "K_relerr_norm_pct","K_relerr_base_pct"), 2) |>
+  formatSignif("K_contrast_norm", 3) |>
+  formatStyle("rho_relerr_norm_pct",
+              backgroundColor = styleInterval(c(-10, 10), c("#f8d7da", "white", "#f8d7da"))) |>
+  formatStyle("ESS_pct", backgroundColor = styleInterval(1, c("#f8d7da", "white")))
+```
+
+`E_parents` is the expected number of parents per pattern at $\nu_0$. It grows with $\nu_0$ because spatstat pads the parent window further for a heavier-tailed kernel. It does not enter the weights here, since the parent density cancels when $\kappa$ is not perturbed, but it does set how long each case took to simulate.
+
+# ESS against the perturbation
+
+```{r ess-vs-delta}
+grp_col <- c("#1b7837", "#762a83")
+p <- plot_ly()
+for (g in 1:2) {
+  d <- cases[cases$group == g, ]
+  d <- d[order(d$delta_value), ]
+  p <- p |> add_trace(x = d$delta_value, y = d$ESS_pct, type = "scatter", mode = "lines+markers",
+                      name = sprintf("group %d", g), text = d$label, hoverinfo = "text",
+                      line = list(color = grp_col[g]), marker = list(color = grp_col[g], size = 8))
+}
+p |> layout(xaxis = list(title = "delta in nu (nu_0 = nu + delta)", zeroline = TRUE),
+            yaxis = list(title = "ESS as % of nSims", type = "log"))
+```
+
+# Compared with perturbing the scale {#vs-scale}
+
+At fixed $\sigma$ a change in $\nu$ also changes the cluster size, so a $\nu$ shift is part size change and part shape change. Study 4 perturbed the scale, which changes only the size. The plot puts both on a common axis, the log change in rms cluster radius between the simulation and the target: $\tfrac12\log\frac{\nu_0 + 1}{\nu + 1}$ for a $\nu$ shift, and the log-delta itself for a scale shift. Where the $\nu$ curve lies below the scale curve, the change of shape costs ESS on top of the size change. Study 4's scale grid is coarse ($\pm 0.1, 0.2, 0.4, 0.8$), so the comparison in the findings interpolates between its points.
+
+```{r vs-scale}
+p <- plot_ly()
+for (g in 1:2) {
+  d <- cases[cases$group == g, ];    d <- d[order(d$log_size_change), ]
+  b <- s4_scale[s4_scale$group == g, ]; b <- b[order(b$log_size_change), ]
+  p <- p |>
+    add_trace(x = d$log_size_change, y = d$ESS_pct, type = "scatter", mode = "lines+markers",
+              name = sprintf("group %d, nu shifted", g), text = d$label, hoverinfo = "text",
+              line = list(color = grp_col[g]), marker = list(color = grp_col[g], size = 8)) |>
+    add_trace(x = b$log_size_change, y = b$ESS_pct, type = "scatter", mode = "lines+markers",
+              name = sprintf("group %d, scale shifted (study 4)", g), text = b$label, hoverinfo = "text",
+              line = list(color = grp_col[g], dash = "dot"),
+              marker = list(color = grp_col[g], size = 8, symbol = "diamond-open"))
+}
+p |> layout(xaxis = list(title = "log change in rms cluster radius (simulation vs target)"),
+            yaxis = list(title = "ESS as % of nSims", type = "log"))
+```
+
+# Convergence against sample size {.tabset}
+
+Each panel shows how the estimate moves as `nSamples` grows, for the unnormalized and self-normalized weighting schemes. Use the dropdown at the top right to switch between perturbation cases.
+
+```{r conv-funs}
+conv_plot <- function(grp, what = c("rho", "K")) {
+  what <- match.arg(what)
+  labels <- vapply(grp$res_cases,
+                   function(cs) delta_of(cs$par_0, grp$par_goal)$label, character(1))
+  p <- plot_ly(); idx <- 0; trace_of <- list()
+
+  for (i in seq_along(grp$res_cases)) {
+    ri <- grp$res_cases[[i]]$res_is
+    if (what == "rho") {
+      y_u <- ri$rho_is; y_n <- ri$rho_is_norm
+    } else {
+      Kt <- grp$res_true$K_true
+      y_u <- vapply(ri$K_is,      function(k) K_contrast(Kt, k), numeric(1))
+      y_n <- vapply(ri$K_is_norm, function(k) K_contrast(Kt, k), numeric(1))
+    }
+    p <- p |> add_lines(x = grp$nSamples, y = y_u, name = "unnormalized",
+                        legendgroup = "u", line = list(color = "firebrick", dash = "dot"),
+                        visible = (i == 1))
+    idx <- idx + 1; trace_of[[paste0(i, "u")]] <- idx
+    p <- p |> add_lines(x = grp$nSamples, y = y_n, name = "normalized",
+                        legendgroup = "n", line = list(color = "steelblue"),
+                        visible = (i == 1))
+    idx <- idx + 1; trace_of[[paste0(i, "n")]] <- idx
+  }
+
+  if (what == "rho") {
+    rt <- grp$res_true$rho_true
+    p <- p |> add_lines(x = range(grp$nSamples), y = c(rt, rt), name = "rho_true",
+                        line = list(color = "black", dash = "dash"), visible = TRUE)
+    idx <- idx + 1
+    yaxis <- list(title = "intensity estimate")
+  } else {
+    yaxis <- list(title = "K contrast vs truth (log scale)", type = "log")
+  }
+  n_total <- idx
+
+  buttons <- lapply(seq_along(grp$res_cases), function(i) {
+    vis <- rep(FALSE, n_total)
+    vis[trace_of[[paste0(i, "u")]]] <- TRUE
+    vis[trace_of[[paste0(i, "n")]]] <- TRUE
+    if (what == "rho") vis[n_total] <- TRUE
+    list(method = "restyle", args = list("visible", vis), label = labels[i])
+  })
+
+  p |> layout(xaxis = list(title = "nSamples", type = "log"), yaxis = yaxis,
+              updatemenus = list(list(active = 0, x = 1, y = 1.15,
+                                      xanchor = "right", buttons = buttons)))
+}
+```
+
+```{r conv, results="asis"}
+# print()ing a widget inside a results='asis' loop does not register its JS
+# dependencies on its own; knit_meta_add() does that explicitly.
+for (g in seq_along(nuStudy)) {
+  grp <- nuStudy[[g]]
+  cat(sprintf("\n## Group %d: %s {.tabset}\n\n", g, fmt_par(grp$par_goal)))
+  for (w in c("rho", "K")) {
+    cat(sprintf("\n### %s\n\n", if (w == "rho") "Intensity" else "K contrast"))
+    pl <- conv_plot(grp, w)
+    knitr::knit_meta_add(htmltools::findDependencies(pl))
+    print(htmltools::tagList(pl))
+  }
+}
+```
+
+# Estimation error
+
+## Against ESS
+
+```{r err-vs-ess}
+p <- plot_ly()
+for (g in 1:2) {
+  d <- pert[pert$group == g, ]
+  p <- p |>
+    add_markers(x = d$ESS_pct, y = abs(d$rho_relerr_norm_pct), text = d$label, hoverinfo = "text",
+                name = sprintf("group %d, |rho error|", g),
+                marker = list(size = 8, opacity = 0.8, color = grp_col[g], symbol = "circle")) |>
+    add_markers(x = d$ESS_pct, y = d$K_relerr_norm_pct, text = d$label, hoverinfo = "text",
+                name = sprintf("group %d, K relative RMS error", g),
+                marker = list(size = 8, opacity = 0.8, color = grp_col[g], symbol = "square-open"))
+}
+p |> layout(xaxis = list(title = "ESS as % of nSims", type = "log"),
+            yaxis = list(title = "relative error of the normalized estimate (%)", type = "log"))
+```
+
+## How far does importance sampling have to move the estimate?
+
+The baseline is the error of the **unweighted** ensemble, i.e. what you would get by ignoring the weights entirely. Since the cluster size grows with $\nu_0$, the unweighted intensity and K-function move steadily away from the truth as $|\delta|$ grows, which gives the weights something to correct. Points below the dashed line are cases where the weights improved on the unweighted baseline; points above it are cases where reweighting made the estimate worse.
+
+```{r base-vs-is}
+p <- plot_ly()
+for (g in 1:2) {
+  d <- pert[pert$group == g, ]
+  p <- p |>
+    add_markers(x = abs(d$rho_relerr_base_pct), y = abs(d$rho_relerr_norm_pct), text = d$label,
+                hoverinfo = "text", name = sprintf("group %d, intensity", g),
+                marker = list(size = 8, opacity = 0.8, color = grp_col[g], symbol = "circle")) |>
+    add_markers(x = d$K_relerr_base_pct, y = d$K_relerr_norm_pct, text = d$label,
+                hoverinfo = "text", name = sprintf("group %d, K-function", g),
+                marker = list(size = 8, opacity = 0.8, color = grp_col[g], symbol = "square-open"))
+}
+p |>
+  add_lines(x = c(1e-3, 1e3), y = c(1e-3, 1e3), name = "no improvement",
+            line = list(color = "grey", dash = "dash")) |>
+  layout(xaxis = list(title = "|error| of unweighted baseline (%)", type = "log"),
+         yaxis = list(title = "|error| after importance sampling (%)", type = "log"))
+```
+
+# Unnormalized weights
+
+At the full sample size the unnormalized estimate is the normalized one multiplied by the mean raw weight, so a mean raw weight of 1 means unnormalized importance sampling is unbiased. The plot shows the cases with an ESS of at least 5%; below that, the sample mean of the weights scatters too much to say anything.
+
+```{r mean-w}
+mw <- pert[pert$ESS_pct >= 5, ]
+p <- plot_ly()
+for (g in 1:2) {
+  d <- mw[mw$group == g, ]
+  d <- d[order(d$delta_value), ]
+  p <- p |> add_trace(x = d$delta_value, y = d$mean_w, type = "scatter", mode = "lines+markers",
+                      name = sprintf("group %d", g), text = d$label, hoverinfo = "text",
+                      line = list(color = grp_col[g]), marker = list(color = grp_col[g], size = 8))
+}
+p |>
+  add_lines(x = range(mw$delta_value), y = c(1, 1), name = "1",
+            line = list(color = "grey", dash = "dash")) |>
+  layout(xaxis = list(title = "delta in nu (nu_0 = nu + delta)"),
+         yaxis = list(title = "mean raw weight"))
+```
