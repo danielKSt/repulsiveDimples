@@ -49,5 +49,11 @@ leaves one integral per parent,
 \deqn{p_W(c) = \int_0^\infty P_W(c, \sigma \sqrt{2g})\, \gamma_{\nu+1}(g)\,\mathrm{d}g,}
 where \eqn{P_W(c, s)} is the probability that a normal displacement with standard
 deviation \eqn{s} from \eqn{c} lands in \eqn{W} and \eqn{\gamma_{\nu+1}} is the
-Gamma\eqn{(\nu+1, 1)} density. It is evaluated with \code{\link[stats]{integrate}}.
+Gamma\eqn{(\nu+1, 1)} density. It is evaluated with \code{\link[stats]{integrate}}
+after substituting \eqn{g = u^{1/(\nu+1)}}, which turns it into
+\deqn{p_W(c) = \frac{1}{\Gamma(\nu+2)} \int_0^\infty P_W\left(c, \sigma \sqrt{2u^{1/(\nu+1)}}\right) e^{-u^{1/(\nu+1)}}\,\mathrm{d}u.}
+For \eqn{\nu < 0} the gamma density is infinite at 0, and for a parent very close to
+an edge of \eqn{W} the probability also changes sharply there, a combination that
+made \code{integrate} fail with a roundoff error. The substitution removes the
+singularity.
 }

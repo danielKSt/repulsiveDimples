@@ -12,6 +12,7 @@ importance_sampling_weights_varGamma(
   kappa_0 = NULL,
   mu_0 = NULL,
   scale_0 = NULL,
+  nu_0 = nu,
   patternSim,
   log_f_kappa_0 = NULL,
   log_fCond_theta_0 = NULL,
@@ -26,13 +27,16 @@ importance_sampling_weights_varGamma(
 
 \item{scale}{scale parameter, \eqn{\sigma} in \code{\link{varGamma_daughter_log_density}}}
 
-\item{nu}{Shape parameter of the kernel, shared by the ensemble and the target}
+\item{nu}{Shape parameter of the kernel, greater than -1}
 
 \item{kappa_0}{Kappa parameter the ensemble was simulated with}
 
 \item{mu_0}{mu parameter the ensemble was simulated with}
 
 \item{scale_0}{scale parameter the ensemble was simulated with}
+
+\item{nu_0}{Shape parameter the ensemble was simulated with, greater than -1. Defaults
+to \code{nu}.}
 
 \item{patternSim}{List of point patterns to use for estimation}
 
@@ -50,13 +54,13 @@ default) to always recompute.}
 }
 \value{
 A list with \code{w_is} (the importance sampling weights) and \code{daughter_kernel_cache}
-(to be passed back into the next call for reuse when \code{scale} is unchanged). When the
+(to be passed back into the next call for reuse when \code{scale} and \code{nu} are unchanged). When the
 target and simulation parameters coincide the weights are all exactly 1 and
 \code{daughter_kernel_cache} is returned unchanged.
 }
 \description{
 Calculate importance sampling weights for a Variance gamma process, for moving
-\verb{(kappa, scale, mu)} away from the \verb{(kappa_0, scale_0, mu_0)} the ensemble was
-simulated with. The shape \code{nu} is not reweighted: it is the same for the ensemble and
-the target, and has to be the \code{nu} the ensemble was simulated with.
+\verb{(kappa, scale, mu, nu)} away from the \verb{(kappa_0, scale_0, mu_0, nu_0)} the ensemble
+was simulated with. \code{nu_0} defaults to \code{nu}, in which case the shape is not reweighted
+and \code{nu} has to be the shape the ensemble was simulated with.
 }

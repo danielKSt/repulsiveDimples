@@ -1,17 +1,19 @@
 #' Calculate importance sampling weights for a Variance gamma process
 #' @description
 #' Calculate importance sampling weights for a Variance gamma process, for moving
-#' `(kappa, scale, mu)` away from the `(kappa_0, scale_0, mu_0)` the ensemble was
-#' simulated with. The shape `nu` is not reweighted: it is the same for the ensemble and
-#' the target, and has to be the `nu` the ensemble was simulated with.
+#' `(kappa, scale, mu, nu)` away from the `(kappa_0, scale_0, mu_0, nu_0)` the ensemble
+#' was simulated with. `nu_0` defaults to `nu`, in which case the shape is not reweighted
+#' and `nu` has to be the shape the ensemble was simulated with.
 #'
 #' @param kappa Kappa parameter
 #' @param mu mu parameter
 #' @param scale scale parameter, \eqn{\sigma} in \code{\link{varGamma_daughter_log_density}}
-#' @param nu Shape parameter of the kernel, shared by the ensemble and the target
+#' @param nu Shape parameter of the kernel, greater than -1
 #' @param kappa_0 Kappa parameter the ensemble was simulated with
 #' @param mu_0 mu parameter the ensemble was simulated with
 #' @param scale_0 scale parameter the ensemble was simulated with
+#' @param nu_0 Shape parameter the ensemble was simulated with, greater than -1. Defaults
+#' to `nu`.
 #' @param log_f_kappa_0 Parent null density
 #' @param log_fCond_theta_0 Daughter null density
 #' @param patternSim List of point patterns to use for estimation
@@ -23,17 +25,17 @@
 #' default) to always recompute.
 #'
 #' @return A list with `w_is` (the importance sampling weights) and `daughter_kernel_cache`
-#' (to be passed back into the next call for reuse when `scale` is unchanged). When the
+#' (to be passed back into the next call for reuse when `scale` and `nu` are unchanged). When the
 #' target and simulation parameters coincide the weights are all exactly 1 and
 #' `daughter_kernel_cache` is returned unchanged.
 #'
 #' @export
 importance_sampling_weights_varGamma <- function(kappa, mu, scale, nu,
-                                                 kappa_0 = NULL, mu_0 = NULL, scale_0 = NULL,
+                                                 kappa_0 = NULL, mu_0 = NULL, scale_0 = NULL, nu_0 = nu,
                                                  patternSim, log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL,
                                                  parallel = FALSE, daughter_kernel_cache = NULL){
 
-  if(isTRUE(kappa == kappa_0) && isTRUE(scale == scale_0) && isTRUE(mu == mu_0)){
+  if(isTRUE(kappa == kappa_0) && isTRUE(scale == scale_0) && isTRUE(mu == mu_0) && isTRUE(nu == nu_0)){
     return(list(w_is = rep(1, length(patternSim)),
                 daughter_kernel_cache = daughter_kernel_cache)) # All parameters being equal gives w_is = 1
   }
@@ -49,7 +51,7 @@ importance_sampling_weights_varGamma <- function(kappa, mu, scale, nu,
 
   # Daughters density
   # The expensive O(n_daughter x n_parent) part depends on scale and nu only, so it is
-  # computed once per scale and reused.
+  # computed once per (scale, nu) and reused.
   if(is.null(daughter_kernel_cache) || !isTRUE(all.equal(daughter_kernel_cache$scale, scale)) ||
      !isTRUE(all.equal(daughter_kernel_cache$nu, nu))){
     if(parallel){
@@ -64,18 +66,18 @@ importance_sampling_weights_varGamma <- function(kappa, mu, scale, nu,
                             daughter_log_density_from_sums, numeric(1), mu = mu)
 
   if(is.null(log_fCond_theta_0)){
-    if(isTRUE(all.equal(scale_0, scale))){
-      # Baseline and target share the scale, so the kernel sums just computed are the
+    if(isTRUE(all.equal(scale_0, scale)) && isTRUE(all.equal(nu_0, nu))){
+      # Baseline and target share the kernel, so the kernel sums just computed are the
       # ones the baseline density needs as well, and only the mu-dependent combine differs.
       log_fCond_theta_0 <- vapply(daughter_kernel_cache$kernel_sums,
                                   daughter_log_density_from_sums, numeric(1), mu = mu_0)
     } else {
       if(parallel){
         kernel_sums_0 <- parallel::mclapply(X = patternSim, FUN = varGamma_daughter_kernel_sums,
-                                            scale = scale_0, nu = nu)
+                                            scale = scale_0, nu = nu_0)
       } else {
         kernel_sums_0 <- lapply(X = patternSim, FUN = varGamma_daughter_kernel_sums,
-                                scale = scale_0, nu = nu)
+                                scale = scale_0, nu = nu_0)
       }
       log_fCond_theta_0 <- vapply(kernel_sums_0, daughter_log_density_from_sums,
                                   numeric(1), mu = mu_0)
@@ -149,7 +151,13 @@ varGamma_daughter_log_density <- function(pattern = NULL, mu, scale, nu,
 #' \deqn{p_W(c) = \int_0^\infty P_W(c, \sigma \sqrt{2g})\, \gamma_{\nu+1}(g)\,\mathrm{d}g,}
 #' where \eqn{P_W(c, s)} is the probability that a normal displacement with standard
 #' deviation \eqn{s} from \eqn{c} lands in \eqn{W} and \eqn{\gamma_{\nu+1}} is the
-#' Gamma\eqn{(\nu+1, 1)} density. It is evaluated with \code{\link[stats]{integrate}}.
+#' Gamma\eqn{(\nu+1, 1)} density. It is evaluated with \code{\link[stats]{integrate}}
+#' after substituting \eqn{g = u^{1/(\nu+1)}}, which turns it into
+#' \deqn{p_W(c) = \frac{1}{\Gamma(\nu+2)} \int_0^\infty P_W\left(c, \sigma \sqrt{2u^{1/(\nu+1)}}\right) e^{-u^{1/(\nu+1)}}\,\mathrm{d}u.}
+#' For \eqn{\nu < 0} the gamma density is infinite at 0, and for a parent very close to
+#' an edge of \eqn{W} the probability also changes sharply there, a combination that
+#' made \code{integrate} fail with a roundoff error. The substitution removes the
+#' singularity.
 #'
 #' @param scale    Positive scalar. The scale \eqn{\sigma} of the kernel.
 #' @param nu       Scalar greater than -1. The shape \eqn{\nu} of the kernel.
@@ -162,11 +170,14 @@ varGamma_daughter_log_density <- function(pattern = NULL, mu, scale, nu,
 #' @return A list with \code{area_W}, \code{S_pW} (\eqn{\sum_j p_W(c_j)}),
 #' \code{sumLogK} (\eqn{\sum_i \log \sum_j k(x_i-c_j)}), and \code{nDaughter}.
 #'
-#' @importFrom stats pnorm dgamma integrate
+#' @importFrom stats pnorm integrate
 #' @export
 varGamma_daughter_kernel_sums <- function(pattern = NULL, scale, nu,
                                           parent = NULL, daughter = NULL,
                                           xlim = NULL, ylim = NULL){
+  if(!(nu > -1)){
+    stop("nu must be greater than -1")
+  }
   if(!is.null(pattern)){
     parent <- pattern$parent
     daughter <- pattern$daughter
@@ -178,14 +189,15 @@ varGamma_daughter_kernel_sums <- function(pattern = NULL, scale, nu,
   S_pW <- 0
   if(nrow(parent) > 0){
     p_W <- mapply(function(cx, cy){
-      stats::integrate(function(g){
+      stats::integrate(function(u){
+        g <- u^(1/(nu + 1))
         s <- scale*sqrt(2*g)
         (stats::pnorm(xlim[2], mean = cx, sd = s) - stats::pnorm(xlim[1], mean = cx, sd = s)) *
           (stats::pnorm(ylim[2], mean = cy, sd = s) - stats::pnorm(ylim[1], mean = cy, sd = s)) *
-          stats::dgamma(g, shape = nu + 1)
+          exp(-g)
       }, lower = 0, upper = Inf, rel.tol = 1e-8)$value
     }, parent$x, parent$y)
-    S_pW <- sum(p_W)
+    S_pW <- sum(p_W)/gamma(nu + 2)
   }
 
   sumLogK <- 0
