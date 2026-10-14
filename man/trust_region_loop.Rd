@@ -40,14 +40,16 @@ trust_region_loop(
 }
 \arguments{
 \item{params}{Full log-scale parameter vector to start from, in the order the kernel
-uses: \verb{(log kappa, log omega, log mu)} for \code{kernelType = "thomas"}. Entries outside
-\code{parFreeIndex} are held fixed throughout.}
+uses: \verb{(log kappa, log omega, log mu)} for \code{kernelType = "thomas"} and
+\verb{(log kappa, log scale, log mu, nu)} for \code{kernelType = "varGamma"}, where the shape \code{nu}
+is on its natural scale since it can be negative. Entries outside \code{parFreeIndex} are
+held fixed throughout.}
 
 \item{parFreeIndex}{Indices of \code{params} to estimate.}
 
 \item{kernelType}{Which cluster process to fit, which decides how the ensembles are
-simulated and how the importance sampling weights are computed. Currently only
-\code{"thomas"}, see \code{\link{simulation_step}}.}
+simulated and how the importance sampling weights are computed. \code{"thomas"} or
+\code{"varGamma"}, see \code{\link{simulation_step}}.}
 
 \item{repRange}{Repulsion range.}
 

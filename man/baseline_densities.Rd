@@ -16,8 +16,8 @@ baseline_densities(
 
 \item{params}{Log-scale parameter vector that \code{patternSim} was simulated from.}
 
-\item{kernelType}{Which cluster process \code{patternSim} was simulated from. Currently only
-\code{"thomas"}.}
+\item{kernelType}{Which cluster process \code{patternSim} was simulated from, \code{"thomas"} or
+\code{"varGamma"}.}
 
 \item{printProgress}{Set to TRUE to report progress while computing.}
 }
@@ -28,5 +28,6 @@ A list with \code{log_f_kappa_0}, \code{log_fCond_theta_0}, and \code{daughter_k
 Computes the parent and daughter log-densities of \code{patternSim} under the very
 parameters it was simulated from, which serve as the denominator of every
 importance sampling weight taken against that ensemble. The work is done by the
-kernel's own function, \code{\link{baseline_densities_thomas}} for \code{"thomas"}.
+kernel's own function, \code{\link{baseline_densities_thomas}} for \code{"thomas"} and
+\code{\link{baseline_densities_varGamma}} for \code{"varGamma"}.
 }

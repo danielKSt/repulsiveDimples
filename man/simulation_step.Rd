@@ -19,10 +19,13 @@ simulation_step(
 \arguments{
 \item{nSims}{Number of patterns to simulate.}
 
-\item{params}{Log-scale parameter vector to simulate from, \verb{(log kappa, log omega, log mu)} for \code{kernelType = "thomas"}.}
+\item{params}{Parameter vector to simulate from, \verb{(log kappa, log omega, log mu)} for
+\code{kernelType = "thomas"} and \verb{(log kappa, log scale, log mu, nu)} for
+\code{kernelType = "varGamma"}.}
 
-\item{kernelType}{Which cluster process to simulate. Currently only \code{"thomas"}, which
-simulates with \code{\link{rThomas_matern_thinned}}.}
+\item{kernelType}{Which cluster process to simulate: \code{"thomas"}, which simulates with
+\code{\link{rThomas_matern_thinned}}, or \code{"varGamma"}, which simulates with
+\code{\link{rVarGamma_matern_thinned}}.}
 
 \item{repRange}{Repulsion range of the Matern thinning, passed to the simulator.}
 
@@ -41,7 +44,8 @@ radii the baseline K-functions are evaluated on.}
 A list with \code{patternSim} (the simulated ensemble), \code{rho_baseline},
 \code{K_lambda_baseline}, \code{log_f_kappa_0}, \code{log_fCond_theta_0}, \code{daughter_kernel_cache} (in
 the form the kernel's importance sampling weights expect, see
-\code{\link{importance_sampling_weights_thomas}}), and \code{kernelType}.
+\code{\link{importance_sampling_weights_thomas}} and
+\code{\link{importance_sampling_weights_varGamma}}), and \code{kernelType}.
 }
 \description{
 Draws a fresh ensemble of \code{nSims} thinned patterns of the cluster process named by

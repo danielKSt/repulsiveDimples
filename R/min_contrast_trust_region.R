@@ -17,12 +17,14 @@
 #' has shrunk below `deltaMin`.
 #'
 #' @param params Full log-scale parameter vector to start from, in the order the kernel
-#' uses: `(log kappa, log omega, log mu)` for `kernelType = "thomas"`. Entries outside
-#' `parFreeIndex` are held fixed throughout.
+#' uses: `(log kappa, log omega, log mu)` for `kernelType = "thomas"` and
+#' `(log kappa, log scale, log mu, nu)` for `kernelType = "varGamma"`, where the shape `nu`
+#' is on its natural scale since it can be negative. Entries outside `parFreeIndex` are
+#' held fixed throughout.
 #' @param parFreeIndex Indices of `params` to estimate.
 #' @param kernelType Which cluster process to fit, which decides how the ensembles are
-#' simulated and how the importance sampling weights are computed. Currently only
-#' `"thomas"`, see \code{\link{simulation_step}}.
+#' simulated and how the importance sampling weights are computed. `"thomas"` or
+#' `"varGamma"`, see \code{\link{simulation_step}}.
 #' @param repRange Repulsion range.
 #' @param thinningType Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
 #' @param rho_hat Estimated intensity for data.
@@ -325,10 +327,12 @@ trust_region_loop <- function(params, parFreeIndex, kernelType = "thomas", repRa
 #' match the ensemble.
 #'
 #' @param nSims Number of patterns to simulate.
-#' @param params Log-scale parameter vector to simulate from, `(log kappa, log omega,
-#' log mu)` for `kernelType = "thomas"`.
-#' @param kernelType Which cluster process to simulate. Currently only `"thomas"`, which
-#' simulates with \code{\link{rThomas_matern_thinned}}.
+#' @param params Parameter vector to simulate from, `(log kappa, log omega, log mu)` for
+#' `kernelType = "thomas"` and `(log kappa, log scale, log mu, nu)` for
+#' `kernelType = "varGamma"`.
+#' @param kernelType Which cluster process to simulate: `"thomas"`, which simulates with
+#' \code{\link{rThomas_matern_thinned}}, or `"varGamma"`, which simulates with
+#' \code{\link{rVarGamma_matern_thinned}}.
 #' @param repRange Repulsion range of the Matern thinning, passed to the simulator.
 #' @param thinningType Type of Matern thinning, 1, 2 or 3, passed to the simulator.
 #' @param xlims Simulation window x limits.
@@ -340,7 +344,8 @@ trust_region_loop <- function(params, parFreeIndex, kernelType = "thomas", repRa
 #' @return A list with `patternSim` (the simulated ensemble), `rho_baseline`,
 #' `K_lambda_baseline`, `log_f_kappa_0`, `log_fCond_theta_0`, `daughter_kernel_cache` (in
 #' the form the kernel's importance sampling weights expect, see
-#' \code{\link{importance_sampling_weights_thomas}}), and `kernelType`.
+#' \code{\link{importance_sampling_weights_thomas}} and
+#' \code{\link{importance_sampling_weights_varGamma}}), and `kernelType`.
 #'
 #' @export
 simulation_step <- function(nSims, params, kernelType = "thomas", repRange, thinningType = 2, xlims, ylims,
@@ -352,7 +357,14 @@ simulation_step <- function(nSims, params, kernelType = "thomas", repRange, thin
                                                       thinningType = thinningType,
                                                       xlims = xlims, ylims = ylims, saveparents = TRUE)
                              },
-                             stop("Unknown kernelType \"", kernelType, "\", use \"thomas\"."))
+                             varGamma = function(i){
+                               rVarGamma_matern_thinned(kappa = exp(params[1]), scale = exp(params[2]),
+                                                        mu = exp(params[3]), nu = params[4],
+                                                        repulsionRange = repRange,
+                                                        thinningType = thinningType,
+                                                        xlims = xlims, ylims = ylims, saveparents = TRUE)
+                             },
+                             stop("Unknown kernelType \"", kernelType, "\", use \"thomas\" or \"varGamma\"."))
   if(printProgress){
     print("Simulating pattern: ")
     patternSim <- mcprogress::pmclapply(X = seq_len(nSims), FUN = simulate_pattern)
@@ -384,12 +396,13 @@ simulation_step <- function(nSims, params, kernelType = "thomas", repRange, thin
 #' Computes the parent and daughter log-densities of `patternSim` under the very
 #' parameters it was simulated from, which serve as the denominator of every
 #' importance sampling weight taken against that ensemble. The work is done by the
-#' kernel's own function, \code{\link{baseline_densities_thomas}} for `"thomas"`.
+#' kernel's own function, \code{\link{baseline_densities_thomas}} for `"thomas"` and
+#' \code{\link{baseline_densities_varGamma}} for `"varGamma"`.
 #'
 #' @param patternSim List of simulated point patterns.
 #' @param params Log-scale parameter vector that `patternSim` was simulated from.
-#' @param kernelType Which cluster process `patternSim` was simulated from. Currently only
-#' `"thomas"`.
+#' @param kernelType Which cluster process `patternSim` was simulated from, `"thomas"` or
+#' `"varGamma"`.
 #' @param printProgress Set to TRUE to report progress while computing.
 #'
 #' @return A list with `log_f_kappa_0`, `log_fCond_theta_0`, and `daughter_kernel_cache`.
@@ -397,7 +410,9 @@ baseline_densities <- function(patternSim, params, kernelType = "thomas", printP
   switch(kernelType,
          thomas = baseline_densities_thomas(patternSim = patternSim, params = params,
                                             printProgress = printProgress),
-         stop("Unknown kernelType \"", kernelType, "\", use \"thomas\"."))
+         varGamma = baseline_densities_varGamma(patternSim = patternSim, params = params,
+                                                printProgress = printProgress),
+         stop("Unknown kernelType \"", kernelType, "\", use \"thomas\" or \"varGamma\"."))
 }
 
 #' Evaluate if there is sufficient improvement

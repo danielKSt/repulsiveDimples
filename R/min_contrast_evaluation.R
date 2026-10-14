@@ -16,9 +16,10 @@
 #' @param wq Weights for contrast function
 #' @param normalized Normalize IS weights?
 #' @param parallel_IS_weights Set to TRUE to use parallel computing for the importance weights
-#' @param daughter_kernel_cache Optional cache passed through to \code{\link{importance_sampling_weights_thomas}};
-#' see that function for details. Pass the `daughter_kernel_cache` from this call's return value into
-#' the next call to reuse cached work when `params_new`'s omega is unchanged. When `NULL`, the cache
+#' @param daughter_kernel_cache Optional cache passed through to \code{\link{importance_sampling_weights_thomas}}
+#' or \code{\link{importance_sampling_weights_varGamma}}; see those functions for details. Pass the
+#' `daughter_kernel_cache` from this call's return value into the next call to reuse cached work when
+#' `params_new`'s kernel parameters (omega, or scale and nu) are unchanged. When `NULL`, the cache
 #' `simStepRes` already carries from its own simulation step is used instead of starting cold.
 #'
 #' @return A list with `f_est` (the contrast value), `daughter_kernel_cache` (to be passed back
@@ -47,7 +48,20 @@ contrast_is <- function(simStepRes, params_0, params_new, rho_hat, K_hat,
                                                                log_fCond_theta_0 = simStepRes$log_fCond_theta_0,
                                                                parallel = parallel_IS_weights,
                                                                daughter_kernel_cache = daughter_kernel_cache),
-                   stop("Unknown kernelType \"", simStepRes$kernelType, "\", use \"thomas\"."))
+                   varGamma = importance_sampling_weights_varGamma(kappa_0 = exp(params_0[1]),
+                                                                   scale_0 = exp(params_0[2]),
+                                                                   mu_0 = exp(params_0[3]),
+                                                                   nu_0 = params_0[4],
+                                                                   kappa = exp(params_new[1]),
+                                                                   scale = exp(params_new[2]),
+                                                                   mu = exp(params_new[3]),
+                                                                   nu = params_new[4],
+                                                                   patternSim = simStepRes$patternSim,
+                                                                   log_f_kappa_0 = simStepRes$log_f_kappa_0,
+                                                                   log_fCond_theta_0 = simStepRes$log_fCond_theta_0,
+                                                                   parallel = parallel_IS_weights,
+                                                                   daughter_kernel_cache = daughter_kernel_cache),
+                   stop("Unknown kernelType \"", simStepRes$kernelType, "\", use \"thomas\" or \"varGamma\"."))
   w_is <- is_res$w_is
   ess <- (sum(w_is)^2)/sum(w_is^2)
   rho_est <- rho_importance_sampling(w_is = w_is, rho_baseline = simStepRes$rho_baseline, normalized = normalized)
