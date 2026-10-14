@@ -27,18 +27,28 @@ reseed_main_process <- function(){
 # simulation_studies/Thomas/Importance_sampling/R_scripts), with the same
 # structure and the same returned lists, so the two studies can be analysed side by
 # side. The parameters are (kappa, scale, mu) on the log scale, in data frames with
-# those column names. The shape nu is fixed: it is passed separately, never perturbed,
-# and stored with the results.
-importance_sampling_varGamma <- function(par_0, par_goal, nu, repRange, nSims, xlims_sim, ylims_sim,
+# those column names. The shape nu is either fixed, passed separately as `nu` and never
+# perturbed, or a fourth column `nu` of the data frames. As a column it is perturbed
+# like the others, but on its own scale rather than the log scale, since it can be
+# negative. Either way it is stored with the results.
+
+# nu from a parameter data frame's nu column if it has one, otherwise the fixed nu.
+nu_of <- function(par, nu){
+  if(!is.null(par$nu)) par$nu else nu
+}
+
+importance_sampling_varGamma <- function(par_0, par_goal, nu = NULL, repRange, nSims, xlims_sim, ylims_sim,
                                          nSamples, r_vec, printProgress = FALSE){
   # Unpack parameters and transform them out of log scale
   kappa <- exp(par_goal$kappa)
   scale <- exp(par_goal$scale)
   mu <- exp(par_goal$mu)
+  nu_goal <- nu_of(par_goal, nu)
 
   kappa_0 <- exp(par_0$kappa)
   scale_0 <- exp(par_0$scale)
   mu_0 <- exp(par_0$mu)
+  nu_0 <- nu_of(par_0, nu)
 
   reseed_main_process()
   if(printProgress){
@@ -46,7 +56,7 @@ importance_sampling_varGamma <- function(par_0, par_goal, nu, repRange, nSims, x
     patternSim <- pmclapply(X = rep(kappa_0, nSims), FUN = rVarGamma_matern_thinned,
                             scale = scale_0,
                             mu = mu_0,
-                            nu = nu,
+                            nu = nu_0,
                             repulsionRange = repRange,
                             xlims = xlims_sim,
                             ylims = ylims_sim,
@@ -57,7 +67,7 @@ importance_sampling_varGamma <- function(par_0, par_goal, nu, repRange, nSims, x
     patternSim <- parallel::mclapply(X = rep(kappa_0, nSims), FUN = rVarGamma_matern_thinned,
                                      scale = scale_0,
                                      mu = mu_0,
-                                     nu = nu,
+                                     nu = nu_0,
                                      repulsionRange = repRange,
                                      xlims = xlims_sim,
                                      ylims = ylims_sim,
@@ -67,8 +77,8 @@ importance_sampling_varGamma <- function(par_0, par_goal, nu, repRange, nSims, x
 
   rho_baseline <- sapply(patternSim, estimate_rho_baseline)
   if(printProgress){print("Calculating IS weights: ")}
-  w_is <- importance_sampling_weights_varGamma(kappa = kappa, mu = mu, scale = scale, nu = nu,
-                                               kappa_0 = kappa_0, mu_0 = mu_0, scale_0 = scale_0,
+  w_is <- importance_sampling_weights_varGamma(kappa = kappa, mu = mu, scale = scale, nu = nu_goal,
+                                               kappa_0 = kappa_0, mu_0 = mu_0, scale_0 = scale_0, nu_0 = nu_0,
                                                patternSim = patternSim, parallel = TRUE)$w_is
 
   rho_base <- rho_importance_sampling(rho_baseline = rho_baseline, w_is = rep(1, nSims))
@@ -101,11 +111,12 @@ importance_sampling_varGamma <- function(par_0, par_goal, nu, repRange, nSims, x
               rho_base = rho_base, K_base = K_base))
 }
 
-estimate_true_varGamma <- function(par_goal, nu, nTrue, xlims_true, ylims_true, repRange, r_vec, printProgress = FALSE){
+estimate_true_varGamma <- function(par_goal, nu = NULL, nTrue, xlims_true, ylims_true, repRange, r_vec, printProgress = FALSE){
   # Unpack parameters and transform them out of log scale
   kappa <- exp(par_goal$kappa)
   scale <- exp(par_goal$scale)
   mu <- exp(par_goal$mu)
+  nu <- nu_of(par_goal, nu)
 
   reseed_main_process()
   if(printProgress){
@@ -146,7 +157,7 @@ estimate_true_varGamma <- function(par_goal, nu, nTrue, xlims_true, ylims_true, 
 }
 
 
-combined_sim_study_varGamma <- function(par_goal, par_delta, nu, repRange,
+combined_sim_study_varGamma <- function(par_goal, par_delta, nu = NULL, repRange,
                                         nSims, xlims_sim, ylims_sim, nSamples, r_vec,
                                         nTrue, xlims_true, ylims_true,
                                         printProgress = FALSE){
@@ -168,13 +179,13 @@ combined_sim_study_varGamma <- function(par_goal, par_delta, nu, repRange,
                                              nSamples = nSamples, r_vec = r_vec,
                                              printProgress = printProgress)
 
-      res_complete[[j]] <- list(res_is = res_is, par_0 = par_0, nu = nu, repRange = repRange,
+      res_complete[[j]] <- list(res_is = res_is, par_0 = par_0, nu = nu_of(par_0, nu), repRange = repRange,
                                 nSims = nSims, xlims_sim = xlims_sim, ylims_sim = ylims_sim)
     }
     res[[i]] <- list(res_true = res_true,
                      nSamples = nSamples,
                      par_goal = par_i,
-                     nu = nu,
+                     nu = nu_of(par_i, nu),
                      res_cases = res_complete)
   }
   return(res)
