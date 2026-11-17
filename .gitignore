@@ -14,3 +14,7 @@ tests/testthat/_problems/
 
 # TeX write-up of the algorithms, plus everything latexmk generates alongside it
 notes/
+
+# Markdown intermediates left behind by knitting, and profiler output
+*.knit.md
+*.out
