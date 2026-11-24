@@ -41,6 +41,8 @@ export(trust_step_quadratic)
 export(varGamma_daughter_kernel_sums)
 export(varGamma_daughter_log_density)
 importFrom(rlang,.data)
-importFrom(stats,dnorm)
-importFrom(stats,integrate)
-importFrom(stats,pnorm)
+importFrom(stats,
+  dnorm,
+  pnorm,
+  qgamma
+)

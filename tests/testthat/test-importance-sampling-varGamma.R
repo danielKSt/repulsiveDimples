@@ -126,3 +126,83 @@ test_that("nu at or below -1 is rejected", {
                                              daughter = no_daughters, xlim = xl, ylim = yl),
                "nu must be greater than -1")
 })
+
+# Independent reference for p_W(c): the window probability averaged over the quantiles of
+# the gamma mixing variable, where nothing is singular whatever nu.
+p_W_quantile <- function(cx, cy, s, nu, lim_x = xl, lim_y = yl) {
+  P_W <- function(sd) {
+    (stats::pnorm(lim_x[2], cx, sd) - stats::pnorm(lim_x[1], cx, sd)) *
+      (stats::pnorm(lim_y[2], cy, sd) - stats::pnorm(lim_y[1], cy, sd))
+  }
+  stats::integrate(function(u) P_W(s*sqrt(2*stats::qgamma(u, shape = nu + 1))),
+                   0, 1, rel.tol = 1e-11, subdivisions = 10000)$value
+}
+
+# a parent in the centre, near a corner, 1e-4 inside an edge, and outside an edge
+grid_parents <- data.frame(x = c(1.5, 0.05, 2.9999, -0.1), y = c(1.5, 0.05, 1.2, 1.5))
+
+test_that("the window probabilities match an independent reference across nu and scale", {
+  for (nu in c(-0.9, -0.4, 0.5, 2, 5)) {
+    for (s in c(0.03, 0.3, 3)) {
+      for (j in seq_len(nrow(grid_parents))) {
+        got <- varGamma_daughter_kernel_sums(scale = s, nu = nu, parent = grid_parents[j, ],
+                                             daughter = no_daughters, xlim = xl, ylim = yl)$S_pW
+        ref <- p_W_quantile(grid_parents$x[j], grid_parents$y[j], s, nu)
+        expect_lt(abs(got - ref)/max(ref, 1e-6), 1e-8,
+                  label = sprintf("relative error at nu = %g, scale = %g, parent %d", nu, s, j))
+      }
+    }
+  }
+})
+
+test_that("a window grid used at other parameters is extended and refined to cover them", {
+  pattern <- list(parent = grid_parents, daughter = no_daughters,
+                  xlim_unthinned = xl, ylim_unthinned = yl)
+  grid <- varGamma_window_grid(list(pattern), scale = 0.03, nu = -0.5)
+  ref <- function(s, nu) sum(mapply(p_W_quantile, grid_parents$x, grid_parents$y,
+                                    MoreArgs = list(s = s, nu = nu)))
+
+  # a much larger scale needs the grid to reach further to the right
+  wide <- varGamma_window_grid_cover(grid, list(pattern), scale = 3, nu = -0.5)
+  expect_gt(max(wide$t), max(grid$t))
+  expect_identical(wide$t[seq_along(grid$t)], grid$t)
+  expect_equal(varGamma_window_sums(wide, scale = 3, nu = -0.5), ref(3, -0.5), tolerance = 1e-9)
+
+  # a large nu needs a finer grid
+  fine <- varGamma_window_grid_cover(grid, list(pattern), scale = 0.3, nu = 10)
+  expect_lt(fine$h, grid$h)
+  expect_equal(varGamma_window_sums(fine, scale = 0.3, nu = 10), ref(0.3, 10), tolerance = 1e-9)
+
+  # and one that already covers the parameters is left as it is
+  expect_identical(varGamma_window_grid_cover(wide, list(pattern), scale = 0.3, nu = 0.5), wide)
+})
+
+test_that("a window grid from another ensemble is rebuilt rather than used", {
+  pats <- patterns()
+  other <- patterns(n = 4)[c(2, 1, 4, 3)]
+  stale <- varGamma_window_grid(other, scale = scale, nu = 1/2)
+  rebuilt <- varGamma_window_grid_cover(stale, pats, scale = scale, nu = 1/2)
+  expect_equal(varGamma_window_sums(rebuilt, scale = scale, nu = 1/2),
+               vapply(pats, function(p) varGamma_daughter_kernel_sums(p, scale = scale, nu = 1/2)$S_pW,
+                      numeric(1)), tolerance = 1e-12)
+})
+
+test_that("the weights keep one window grid for the target and the baseline", {
+  pats <- patterns()
+  first <- importance_sampling_weights_varGamma(kappa = 1, mu = 3, scale = 0.33, nu = 0.8,
+                                                kappa_0 = 1, mu_0 = 3, scale_0 = scale, nu_0 = 1/2,
+                                                patternSim = pats)
+  grid <- first$daughter_kernel_cache$window_grid
+  expect_false(is.null(grid))
+  # moving scale and nu again recomputes the kernel sums but keeps the grid
+  second <- importance_sampling_weights_varGamma(kappa = 1, mu = 3, scale = 0.31, nu = 0.7,
+                                                 kappa_0 = 1, mu_0 = 3, scale_0 = scale, nu_0 = 1/2,
+                                                 patternSim = pats,
+                                                 daughter_kernel_cache = first$daughter_kernel_cache)
+  expect_identical(second$daughter_kernel_cache$window_grid, grid)
+  expect_equal(second$daughter_kernel_cache$scale, 0.31)
+  fresh <- importance_sampling_weights_varGamma(kappa = 1, mu = 3, scale = 0.31, nu = 0.7,
+                                                kappa_0 = 1, mu_0 = 3, scale_0 = scale, nu_0 = 1/2,
+                                                patternSim = pats)
+  expect_equal(second$w_is, fresh$w_is, tolerance = 1e-12)
+})

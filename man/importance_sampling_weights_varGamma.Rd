@@ -46,17 +46,19 @@ to \code{nu}.}
 
 \item{parallel}{Set to TRUE to use parallel computing}
 
-\item{daughter_kernel_cache}{Optional cache from a previous call, as returned in this
-call's output (a list with \code{scale}, \code{nu} and per-pattern \code{kernel_sums}). The expensive
-part of the daughter log-density, which depends on \code{scale} and \code{nu} but not on \code{mu}, is
-only recomputed when \code{scale} or \code{nu} differs from the cached value. Pass \code{NULL} (the
-default) to always recompute.}
+\item{daughter_kernel_cache}{Optional cache from a previous call on the same ensemble,
+as returned in this call's output: a list with \code{scale}, \code{nu}, per-pattern
+\code{kernel_sums}, and \code{window_grid} (see \code{\link{varGamma_window_grid}}). The kernel
+sums, which depend on \code{scale} and \code{nu} but not on \code{mu}, are only recomputed when \code{scale}
+or \code{nu} differs from the cached value. The window grid does not depend on the
+parameters at all, so it is kept across changes of \code{scale} and \code{nu}, and only extended
+when they reach outside what it covers. A grid built for a different ensemble is
+detected and rebuilt. Pass \code{NULL} (the default) to start from scratch.}
 }
 \value{
 A list with \code{w_is} (the importance sampling weights) and \code{daughter_kernel_cache}
-(to be passed back into the next call for reuse when \code{scale} and \code{nu} are unchanged). When the
-target and simulation parameters coincide the weights are all exactly 1 and
-\code{daughter_kernel_cache} is returned unchanged.
+(to be passed back into the next call). When the target and simulation parameters
+coincide the weights are all exactly 1 and \code{daughter_kernel_cache} is returned unchanged.
 }
 \description{
 Calculate importance sampling weights for a Variance gamma process, for moving

@@ -16,18 +16,21 @@ was simulated from.}
 }
 \value{
 A list with \code{log_f_kappa_0}, \code{log_fCond_theta_0}, and
-\code{daughter_kernel_cache} (in the form \code{importance_sampling_weights_varGamma} expects).
+\code{daughter_kernel_cache} (in the form \code{importance_sampling_weights_varGamma} expects,
+including its \code{window_grid}).
 }
 \description{
 Computes the parent and daughter log-densities of \code{patternSim} under the very
 parameters it was simulated from, which serve as the denominator of every
 importance sampling weight taken against that ensemble.
 
-The daughter density needs the kernel sums at \verb{(scale_0, nu_0)}, dominated by the
-window probabilities \eqn{p_W(c)} of every parent (see
+The daughter density needs the kernel sums at \verb{(scale_0, nu_0)} (see
 \code{\link{varGamma_daughter_kernel_sums}}), which are exactly the sums the subsequent
-trust-region evaluations need whenever they leave \code{scale} and \code{nu} unchanged. They are
-therefore returned alongside the densities, ready to seed \code{daughter_kernel_cache}, so
-the ensemble is passed over once instead of once here and again on the first
-evaluation.
+trust-region evaluations need whenever they leave \code{scale} and \code{nu} unchanged. Their
+window probabilities come from a window grid of the ensemble (see
+\code{\link{varGamma_window_grid}}), which every later evaluation needs as well, at
+whatever \code{scale} and \code{nu}. Both are therefore returned alongside the densities, ready to
+seed \code{daughter_kernel_cache}, so the ensemble is passed over once instead of once here
+and again on the first evaluation, and every weight taken against the ensemble uses the
+same grid for its numerator as this baseline does for its denominator.
 }

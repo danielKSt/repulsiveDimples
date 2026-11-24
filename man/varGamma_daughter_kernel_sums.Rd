@@ -42,18 +42,13 @@ kernel but not on \eqn{\mu}: \eqn{\sum_j p_W(c_j)} and
 The 2D Variance gamma kernel does not factorise over the two coordinates, so unlike
 for the Thomas process \eqn{p_W(c)} has no closed form on a rectangle. It is computed
 from the normal variance mixture the kernel is simulated from: a daughter is displaced
-from its parent by \eqn{\sqrt{V} Z}, with \eqn{Z} standard normal in 2D and
-\eqn{V = 2\sigma^2 G}, \eqn{G \sim \mathrm{Gamma}(\nu + 1, 1)}. Given \eqn{G = g} the
-probability factorises into normal CDF differences, as for the Thomas process, which
-leaves one integral per parent,
-\deqn{p_W(c) = \int_0^\infty P_W(c, \sigma \sqrt{2g})\, \gamma_{\nu+1}(g)\,\mathrm{d}g,}
-where \eqn{P_W(c, s)} is the probability that a normal displacement with standard
-deviation \eqn{s} from \eqn{c} lands in \eqn{W} and \eqn{\gamma_{\nu+1}} is the
-Gamma\eqn{(\nu+1, 1)} density. It is evaluated with \code{\link[stats]{integrate}}
-after substituting \eqn{g = u^{1/(\nu+1)}}, which turns it into
-\deqn{p_W(c) = \frac{1}{\Gamma(\nu+2)} \int_0^\infty P_W\left(c, \sigma \sqrt{2u^{1/(\nu+1)}}\right) e^{-u^{1/(\nu+1)}}\,\mathrm{d}u.}
-For \eqn{\nu < 0} the gamma density is infinite at 0, and for a parent very close to
-an edge of \eqn{W} the probability also changes sharply there, a combination that
-made \code{integrate} fail with a roundoff error. The substitution removes the
-singularity.
+from its parent by \eqn{\sqrt{S} Z}, with \eqn{Z} standard normal in 2D and
+\eqn{S = 2\sigma^2 G}, \eqn{G \sim \mathrm{Gamma}(\nu + 1, 1)}. Given \eqn{S = s} the
+probability \eqn{I(c; s)} that the daughter lands in \eqn{W} factorises into normal CDF
+differences, as for the Thomas process. Only the sum over the parents is needed, and
+\eqn{J(s) = \sum_j I(c_j; s)} does not depend on \eqn{(\sigma, \nu)}, so the sum is
+computed from a precomputed table of \eqn{J}, see \code{\link{varGamma_window_grid}}
+for how and how accurately. This function builds that table for its one pattern on
+the fly; \code{\link{importance_sampling_weights_varGamma}} builds it once per
+ensemble instead and reuses it for every \eqn{(\sigma, \nu)}.
 }

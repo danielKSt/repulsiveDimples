@@ -86,13 +86,15 @@ min_contrast_trust_region_varGamma <- function(params, parFreeIndex = c(1, 2, 3)
 #' parameters it was simulated from, which serve as the denominator of every
 #' importance sampling weight taken against that ensemble.
 #'
-#' The daughter density needs the kernel sums at `(scale_0, nu_0)`, dominated by the
-#' window probabilities \eqn{p_W(c)} of every parent (see
+#' The daughter density needs the kernel sums at `(scale_0, nu_0)` (see
 #' \code{\link{varGamma_daughter_kernel_sums}}), which are exactly the sums the subsequent
-#' trust-region evaluations need whenever they leave `scale` and `nu` unchanged. They are
-#' therefore returned alongside the densities, ready to seed `daughter_kernel_cache`, so
-#' the ensemble is passed over once instead of once here and again on the first
-#' evaluation.
+#' trust-region evaluations need whenever they leave `scale` and `nu` unchanged. Their
+#' window probabilities come from a window grid of the ensemble (see
+#' \code{\link{varGamma_window_grid}}), which every later evaluation needs as well, at
+#' whatever `scale` and `nu`. Both are therefore returned alongside the densities, ready to
+#' seed `daughter_kernel_cache`, so the ensemble is passed over once instead of once here
+#' and again on the first evaluation, and every weight taken against the ensemble uses the
+#' same grid for its numerator as this baseline does for its denominator.
 #'
 #' @param patternSim List of simulated point patterns.
 #' @param params Parameter vector `(log kappa, log scale, log mu, nu)` that `patternSim`
@@ -100,7 +102,8 @@ min_contrast_trust_region_varGamma <- function(params, parFreeIndex = c(1, 2, 3)
 #' @param printProgress Set to TRUE to report progress while computing.
 #'
 #' @return A list with `log_f_kappa_0`, `log_fCond_theta_0`, and
-#' `daughter_kernel_cache` (in the form `importance_sampling_weights_varGamma` expects).
+#' `daughter_kernel_cache` (in the form `importance_sampling_weights_varGamma` expects,
+#' including its `window_grid`).
 baseline_densities_varGamma <- function(patternSim, params, printProgress = FALSE){
   kappa_0 <- exp(params[1])
   scale_0 <- exp(params[2])
@@ -111,17 +114,18 @@ baseline_densities_varGamma <- function(patternSim, params, printProgress = FALS
   n_parent <- vapply(patternSim, function(p) nrow(p$parent), numeric(1))
   log_f_kappa_0 <- B_area*(1 - kappa_0) + n_parent*log(kappa_0)
 
-  if(printProgress){
-    kernel_sums_0 <- mcprogress::pmclapply(X = patternSim, FUN = varGamma_daughter_kernel_sums,
-                                           scale = scale_0, nu = nu_0)
-  } else {
-    kernel_sums_0 <- parallel::mclapply(X = patternSim, FUN = varGamma_daughter_kernel_sums,
-                                        scale = scale_0, nu = nu_0)
-  }
-  log_fCond_theta_0 <- vapply(kernel_sums_0, daughter_log_density_from_sums,
+  # The grid is a small part of the work, so only the kernel sums report their progress.
+  window_grid <- varGamma_window_grid(patternSim = patternSim, scale = scale_0, nu = nu_0,
+                                      lapply_fun = parallel::mclapply)
+  sums_0 <- varGamma_ensemble_kernel_sums(patternSim = patternSim, scale = scale_0, nu = nu_0,
+                                          window_grid = window_grid,
+                                          lapply_fun = if(printProgress) mcprogress::pmclapply
+                                                       else parallel::mclapply)
+  log_fCond_theta_0 <- vapply(sums_0$kernel_sums, daughter_log_density_from_sums,
                               numeric(1), mu = mu_0)
 
   return(list(log_f_kappa_0 = log_f_kappa_0,
               log_fCond_theta_0 = log_fCond_theta_0,
-              daughter_kernel_cache = list(scale = scale_0, nu = nu_0, kernel_sums = kernel_sums_0)))
+              daughter_kernel_cache = list(scale = scale_0, nu = nu_0, kernel_sums = sums_0$kernel_sums,
+                                           window_grid = sums_0$window_grid)))
 }
