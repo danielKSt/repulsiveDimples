@@ -16,54 +16,75 @@ knitr::opts_chunk$set(
 
 ```{r setup}
 library(repulsiveDimples)
+library(spatstat)
 
 # We load data
 data(turbulence)
 dimples <- turbulence$dimples
 sidelength <- turbulence$sidelength
 timescale <- turbulence$timescale
+
+inds <- seq(from = 2, to = length(dimples), by = ceiling(2*timescale))
+dimples <- dimples[inds]
+for(i in 1:length(dimples)){
+  dimples[[i]] <- dimples[[i]]*sidelength
+}
 ```
+
+We estimate summary statistics of the data, $\hat{\rho}$, $\hat{K}(r)$, and the minimum distance $h$.
 
 ```{r hat_estimation}
-# rho_hat <- intensity_est(points_input = dimples, l = sidelength, timescale = timescale)
-# K_hat <- K_est.unions(points_input = dimples,
-#                      l = sidelength,
-#                      timescale = timescale,
-#                      spacing = 5,
-#                      rMax = 4,
-#                      dr = 0.05)
-# 
-# min_dist <- find_min_dist(points_input = dimples, l = sidelength, timescale = timescale)
+rho_hat <- intensity_est(points_input = dimples, l = sidelength, timescale = 1)
+K_hat <- K_est.unions(points_input = dimples, l = sidelength,
+                      timescale = 1,
+                      spacing = 5,
+                      rMax = 4,
+                      dr = 0.05)
+
+min_dist <- find_min_dist(points_input = dimples, l = sidelength, timescale = timescale)
 ```
 
-```{r param_estimation}
-params_init <- c(log(0.8), log(3), log(80))
-# res <- stats::optim(par = params_init,
-#                     fn = objective_weighted_contrast,
-#                     rho_hat = rho_hat,
-#                     K_hat = K_hat,
-#                     params_fixed = c(min_dist),
-#                     free_params_indices = c(1, 2, 3),
-#                     wpq = c(100, 1, 2, 2, 1/4, 2),
-#                     union_est = TRUE,
-#                     win = spatstat.geom::owin(xrange = c(0,10),
-#                                yrange = c(0,10)),
-#                     nSims = 20,
-#                     parallel = FALSE, # Had some issues with the parallel package for vignette building
-#                     control = list(maxit = 5)) # Maxit set to something low to knit quickly
+We find an initial parameter guess through ...
+
+```{r initial_params}
+start_fitted <- thomas.estK(X = K_hat, rmin = 2*min_dist, rmax = sidelength/3)$par
+lambda <- -log(1 - pi*rho_hat*min_dist^2)/(pi*min_dist^2)
+start_params <- log(c(start_fitted[1], start_fitted[2], lambda/start_fitted[1]))
+names(start_params) <- c("kappa", "omega", "mu")
+rm(start_fitted)
 ```
 
-```{r look_at_estimates}
-# estim_phi <- exp(res$par[1])
-# estim_rho <- exp(res$par[2])
-# estim_sigmasq <- exp(res$par[3])
-# estim_repulsionRange <- min_dist
-# estim_kappa <- estim_rho^2/(2*pi*estim_phi*estim_sigmasq)
-# estim_mu <- 2*pi*estim_phi*estim_sigmasq/estim_rho
-# 
-# estim_params <- c(estim_phi, estim_rho, estim_sigmasq, estim_repulsionRange, estim_kappa, estim_mu)
-# setNames(estim_params, c("phi", "rho", "sigmasq", "h", "kappa", "mu"))
-# rm(estim_phi, estim_rho, estim_sigmasq, estim_repulsionRange, estim_kappa, estim_mu)
+```{r parameter_fitting_thomas}
+param_res <- min_contrast_trust_region_thomas(params = start_params,
+                                              parFreeIndex = c(1, 2, 3),
+                                              repRange = min_dist,
+                                              thinningType = 3,
+                                              rho_hat = rho_hat,
+                                              K_hat = K_hat,
+                                              xlims = c(0, 5),
+                                              ylims = c(0, 5),
+                                              nSims = 500,
+                                              deltaInit = 0.2, 
+                                              eta = 0.05, 
+                                              deltaMax = 1.0, 
+                                              deltaMin = 0.0001,
+                                              wq = c(1000, 1/4), 
+                                              normalized = TRUE, 
+                                              eta_trust = 0.6, 
+                                              eta_converged = 0.999,
+                                              validate.converged = FALSE, 
+                                              method.main = "quadratic", 
+                                              method.prefit = "quadratic", 
+                                              tolPrefitLoops = 10^-3,
+                                              maxPrefitLoops = 4, 
+                                              max.iter.prefit = 10,
+                                              tol = 10^-6, 
+                                              max.iter = 30)
+```
+
+
+```{r look_at_estimates_thomas}
+exp(param_res$params)
 ```
 
 
