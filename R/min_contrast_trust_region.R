@@ -17,7 +17,7 @@
 #' has shrunk below `deltaMin`.
 #'
 #' @param params Full log-scale parameter vector to start from, in the order the kernel
-#' uses: `(log kappa, log omega, log mu)` for `kernelType = "thomas"` and
+#' uses: `(log kappa, log sigma, log mu)` for `kernelType = "thomas"` and
 #' `(log kappa, log scale, log mu, nu)` for `kernelType = "varGamma"`, where the shape `nu`
 #' is on its natural scale since it can be negative. Entries outside `parFreeIndex` are
 #' held fixed throughout.
@@ -101,7 +101,7 @@
 #' the mechanism behind Powell (1964); rebuilding it discards that, and additionally makes
 #' every step open with a line search along free parameter 1, which biases the search
 #' toward that parameter -- measured on study1's K block, where log kappa overshot its
-#' target by 72% while log omega reached only a third of its own. The set is dropped back
+#' target by 72% while log sigma reached only a third of its own. The set is dropped back
 #' to the axes whenever it goes singular, since a singular set has lost a search dimension.
 #'
 #' **Only turn this on together with `max.directions` at `NULL`.** The two interact: with
@@ -327,7 +327,7 @@ trust_region_loop <- function(params, parFreeIndex, kernelType = "thomas", repRa
 #' match the ensemble.
 #'
 #' @param nSims Number of patterns to simulate.
-#' @param params Parameter vector to simulate from, `(log kappa, log omega, log mu)` for
+#' @param params Parameter vector to simulate from, `(log kappa, log sigma, log mu)` for
 #' `kernelType = "thomas"` and `(log kappa, log scale, log mu, nu)` for
 #' `kernelType = "varGamma"`.
 #' @param kernelType Which cluster process to simulate: `"thomas"`, which simulates with

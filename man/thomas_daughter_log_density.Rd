@@ -7,7 +7,7 @@
 thomas_daughter_log_density(
   pattern = NULL,
   mu,
-  omega,
+  sigma,
   parent = NULL,
   daughter = NULL,
   xlim = NULL,
@@ -19,7 +19,7 @@ thomas_daughter_log_density(
 
 \item{mu}{Positive scalar. Mean number of daughters per parent.}
 
-\item{omega}{Positive scalar. Standard deviation of the Gaussian dispersal kernel.}
+\item{sigma}{Positive scalar. Standard deviation of the Gaussian dispersal kernel.}
 
 \item{parent}{A \code{data.frame} with columns \code{x} and \code{y} giving parent locations,
 typically restricted to an enlarged window \eqn{B \supset W}.}
@@ -40,7 +40,7 @@ point pattern \eqn{C}, under a Thomas cluster process with a Gaussian
 dispersal kernel. Specifically, conditional on \eqn{C}, the daughters form a
 Poisson point process on \eqn{W} with conditional intensity
 \eqn{\lambda(x \mid C) = \mu \sum_{c_j \in C} k(x - c_j)}, where
-\eqn{k(x - c_j) = \frac{1}{2\pi\omega^2}\exp\!\left(-\frac{\|x-c_j\|^2}{2\omega^2}\right)}
+\eqn{k(x - c_j) = \frac{1}{2\pi\sigma^2}\exp\!\left(-\frac{\|x-c_j\|^2}{2\sigma^2}\right)}
 is the Gaussian dispersal kernel. The log-density with respect to the unit
 rate Poisson process reference measure is then:
 \deqn{

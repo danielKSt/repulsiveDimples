@@ -49,10 +49,10 @@ practice the pair points, which is exactly where the box over-states the region 
 pulled back along its own ray from \code{x_0} until it passes, rather than dropped, since a
 dropped point leaves the interpolation system underdetermined.
 
-The points are visited in order of their omega coordinate. \code{trust_function} keeps the
-daughter kernel sums for one omega at a time and recomputing them costs about seven
-times an evaluation that does not, so the points that share an omega -- the two axial
+The points are visited in order of their sigma coordinate. \code{trust_function} keeps the
+daughter kernel sums for one sigma at a time and recomputing them costs about seven
+times an evaluation that does not, so the points that share an sigma -- the two axial
 points of every other coordinate, in particular -- are cheaper taken together than
 interleaved with points that move it. The saving is partial rather than total, since a
-point that needs repair walks its own ray and moves omega again on the way.
+point that needs repair walks its own ray and moves sigma again on the way.
 }

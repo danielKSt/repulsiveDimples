@@ -1,6 +1,6 @@
 #' Use importance sampling to estimate the (stationary) intensity
 #' @description
-#' Using a thinned Thomas process simulated with parameters kappa_0, mu_0, and omega_0,
+#' Using a thinned Thomas process simulated with parameters kappa_0, mu_0, and sigma_0,
 #' we use importance sampling to estimate
 #'
 #' @param w_is Importance sampling weights

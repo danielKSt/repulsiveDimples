@@ -9,7 +9,7 @@ baseline_densities_thomas(patternSim, params, printProgress = FALSE)
 \arguments{
 \item{patternSim}{List of simulated point patterns.}
 
-\item{params}{Log-scale parameter vector \verb{(log kappa, log omega, log mu)} that
+\item{params}{Log-scale parameter vector \verb{(log kappa, log sigma, log mu)} that
 \code{patternSim} was simulated from.}
 
 \item{printProgress}{Set to TRUE to report progress while computing.}
@@ -24,8 +24,8 @@ parameters it was simulated from, which serve as the denominator of every
 importance sampling weight taken against that ensemble.
 
 The daughter density needs the \eqn{O(n_{daughter} \times n_{parent})} kernel sums at
-\code{omega_0}, which are exactly the sums the subsequent trust-region evaluations
-need whenever they leave omega unchanged. They are therefore returned alongside
+\code{sigma_0}, which are exactly the sums the subsequent trust-region evaluations
+need whenever they leave sigma unchanged. They are therefore returned alongside
 the densities, ready to seed \code{daughter_kernel_cache}, so the ensemble is passed
 over once instead of once here and again on the first evaluation.
 

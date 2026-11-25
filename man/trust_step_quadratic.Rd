@@ -98,7 +98,7 @@ region where the requirement actually holds: loss of effective sample size compo
 across coordinates, so a point moving several of them at once is worse supported than
 any of the single-coordinate moves that make it up. Measured on study1's starting
 parameters at \code{nSims = 300}, \code{delta = 0.2} and \code{eta_trust = 0.6}, the crossings sit at
-\verb{(0.086, 0.200, 0.169)} in \verb{(log kappa, log omega, log mu)}, each at \code{ess/nSims = 0.6}
+\verb{(0.086, 0.200, 0.169)} in \verb{(log kappa, log sigma, log mu)}, each at \code{ess/nSims = 0.6}
 by construction, while the corner those three span comes to 0.409 -- well inside the
 region the requirement rejects. It takes a uniform shrink to about 0.6 of the corner
 before it passes.
@@ -106,7 +106,7 @@ before it passes.
 Every interpolation point is therefore checked and, if it fails, pulled back along its
 own ray from \code{x_0} to the last position that passes (see \code{\link{ess_ray_limit}}).
 That keeps the full width of the box on the coordinates that can take it -- which
-matters, since the region is markedly anisotropic, omega reaching the trust radius
+matters, since the region is markedly anisotropic, sigma reaching the trust radius
 without ever crossing while kappa crosses at less than half of it -- without ever
 leaving a hole in the interpolation set.
 }
@@ -121,13 +121,13 @@ spends, which is the reason to reach for this method.
 
 The evaluations are not interchangeable, though, and the difference is large enough to
 plan around. \code{trust_function} recomputes the \verb{O(n_daughter x n_parent)} daughter kernel
-sums whenever omega moves off the value its cache holds, and reuses them when it does
-not. At \code{nSims = 300} a full evaluation measured 3.2 ms with omega held and 23.4 ms with
-omega moved, a factor of 7. Two consequences are built into this method: a ray search
+sums whenever sigma moves off the value its cache holds, and reuses them when it does
+not. At \code{nSims = 300} a full evaluation measured 3.2 ms with sigma held and 23.4 ms with
+sigma moved, a factor of 7. Two consequences are built into this method: a ray search
 tries the trust radius before it bisects, so a coordinate on which \code{delta} binds before
 the requirement does costs one evaluation instead of \code{bisection_iterations + 1} (on the
-measurement above this is exactly what omega does), and the interpolation points are
-evaluated grouped by omega, so a set holding three distinct omegas pays for three sets
+measurement above this is exactly what sigma does), and the interpolation points are
+evaluated grouped by sigma, so a set holding three distinct sigmas pays for three sets
 of kernel sums rather than one per point.
 }
 

@@ -2,11 +2,11 @@
 % Please edit documentation in R/importance_sampling_weights_thomas.R
 \name{thomas_daughter_kernel_sums}
 \alias{thomas_daughter_kernel_sums}
-\title{Kernel sums for the Thomas daughter log-density (the omega-dependent part)}
+\title{Kernel sums for the Thomas daughter log-density (the sigma-dependent part)}
 \usage{
 thomas_daughter_kernel_sums(
   pattern = NULL,
-  omega,
+  sigma,
   parent = NULL,
   daughter = NULL,
   xlim = NULL,
@@ -16,7 +16,7 @@ thomas_daughter_kernel_sums(
 \arguments{
 \item{pattern}{A list containing elements "parent", "daughter", "xlim_unthinned", and "ylim_unthinned".}
 
-\item{omega}{Positive scalar. Standard deviation of the Gaussian dispersal kernel.}
+\item{sigma}{Positive scalar. Standard deviation of the Gaussian dispersal kernel.}
 
 \item{parent}{A \code{data.frame} with columns \code{x} and \code{y} giving parent locations.}
 
@@ -32,7 +32,7 @@ A list with \code{area_W}, \code{S_pW} (\eqn{\sum_j p_W(c_j)}),
 }
 \description{
 Computes the parts of \code{\link{thomas_daughter_log_density}} that depend on
-\eqn{\omega} (and the fixed parent/daughter positions) but not on \eqn{\mu}:
+\eqn{\sigma} (and the fixed parent/daughter positions) but not on \eqn{\mu}:
 \eqn{\sum_j p_W(c_j)} and \eqn{\sum_i \log\left(\sum_j k(x_i-c_j)\right)}. These are
 the expensive, \eqn{O(n_{daughter} \times n_{parent})} parts of the log-density. Split
 out so they can be computed once and reused across evaluations that only change

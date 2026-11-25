@@ -19,7 +19,7 @@ simulation_step(
 \arguments{
 \item{nSims}{Number of patterns to simulate.}
 
-\item{params}{Parameter vector to simulate from, \verb{(log kappa, log omega, log mu)} for
+\item{params}{Parameter vector to simulate from, \verb{(log kappa, log sigma, log mu)} for
 \code{kernelType = "thomas"} and \verb{(log kappa, log scale, log mu, nu)} for
 \code{kernelType = "varGamma"}.}
 

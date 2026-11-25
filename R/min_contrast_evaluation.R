@@ -19,7 +19,7 @@
 #' @param daughter_kernel_cache Optional cache passed through to \code{\link{importance_sampling_weights_thomas}}
 #' or \code{\link{importance_sampling_weights_varGamma}}; see those functions for details. Pass the
 #' `daughter_kernel_cache` from this call's return value into the next call to reuse cached work when
-#' `params_new`'s kernel parameters (omega, or scale and nu) are unchanged. When `NULL`, the cache
+#' `params_new`'s kernel parameters (sigma, or scale and nu) are unchanged. When `NULL`, the cache
 #' `simStepRes` already carries from its own simulation step is used instead of starting cold.
 #'
 #' @return A list with `f_est` (the contrast value), `daughter_kernel_cache` (to be passed back
@@ -30,18 +30,18 @@ contrast_is <- function(simStepRes, params_0, params_new, rho_hat, K_hat,
                         normalized = FALSE, wq = c(1000, 1/4),
                         parallel_IS_weights = TRUE, daughter_kernel_cache = NULL){
   # simStepRes was built by simulation_step(), which already paid for the kernel sums at
-  # its own omega. With no cache handed in there is nothing better to start from, and the
-  # cache carries the omega it belongs to, so it is simply ignored downstream if
-  # params_new moved omega away from it.
+  # its own sigma. With no cache handed in there is nothing better to start from, and the
+  # cache carries the sigma it belongs to, so it is simply ignored downstream if
+  # params_new moved sigma away from it.
   if(is.null(daughter_kernel_cache)){
     daughter_kernel_cache <- simStepRes$daughter_kernel_cache
   }
   is_res <- switch(simStepRes$kernelType,
                    thomas = importance_sampling_weights_thomas(kappa_0 = exp(params_0[1]),
-                                                               omega_0 = exp(params_0[2]),
+                                                               sigma_0 = exp(params_0[2]),
                                                                mu_0 = exp(params_0[3]),
                                                                kappa = exp(params_new[1]),
-                                                               omega = exp(params_new[2]),
+                                                               sigma = exp(params_new[2]),
                                                                mu = exp(params_new[3]),
                                                                patternSim = simStepRes$patternSim,
                                                                log_f_kappa_0 = simStepRes$log_f_kappa_0,

@@ -9,13 +9,13 @@
 #' to accept the step (see \code{\link{evaluate_improvement}}).
 #'
 #' Before the main fit, the parameters can optionally be pre-fitted in blocks: first
-#' `(log kappa, log omega)` against the K-function alone, then `log mu` against the full
+#' `(log kappa, log sigma)` against the K-function alone, then `log mu` against the full
 #' contrast function. That cycle repeats until it stops moving the parameters -- until one
 #' cycle shifts them by less than `tolPrefitLoops` -- or until `maxPrefitLoops` cycles have
 #' run, whichever comes first. Pre-fitting is skipped entirely when `max.iter.prefit` is 0.
 #' The pre-fitting is what makes this specific to the Thomas process: the K-function of
 #' the unthinned Thomas process does not depend on `mu`, which is what justifies fitting
-#' `(log kappa, log omega)` against the K-function alone.
+#' `(log kappa, log sigma)` against the K-function alone.
 #'
 #' @param params Initial guess for parameters to estimate
 #' @param parFreeIndex Indices of parameters to estimate
@@ -23,7 +23,7 @@
 #' @param thinningType Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
 #' It only changes how the ensembles are simulated. The importance sampling weights are
 #' taken over the parents and the unthinned daughters, and the thinning does not depend
-#' on `(kappa, omega, mu)`, so the same weights are valid for every type.
+#' on `(kappa, sigma, mu)`, so the same weights are valid for every type.
 #' @param K_hat Estimated K-function for data
 #' @param rho_hat Estimated intensity for data
 #' @param wq Weights for contrast function
@@ -89,7 +89,7 @@
 #' the mechanism behind Powell (1964); rebuilding it discards that, and additionally makes
 #' every step open with a line search along free parameter 1, which biases the search
 #' toward that parameter -- measured on study1's K block, where log kappa overshot its
-#' target by 72% while log omega reached only a third of its own. The set is dropped back
+#' target by 72% while log sigma reached only a third of its own. The set is dropped back
 #' to the axes whenever it goes singular, since a singular set has lost a search dimension.
 #'
 #' **Only turn this on together with `max.directions` at `NULL`.** The two interact: with
@@ -114,7 +114,7 @@
 #' because the original loop counted from 1 and stopped *before* `2*n`).
 #'
 #' These are split because the two phases want opposite things. Pre-fitting cycles between
-#' a `(log kappa, log omega)` block and a `log mu` block, and cycling quickly beats solving
+#' a `(log kappa, log sigma)` block and a `log mu` block, and cycling quickly beats solving
 #' either one exactly, so a small value is right there; it also costs nothing on the `mu`
 #' block, which has one free parameter and so no direction set to update. The main fit is
 #' where the accuracy has to come from: on study1, scoring each fit's endpoint against a
@@ -214,7 +214,7 @@
 #' error of the block fits rather than progress, so the tolerance simply never fires and
 #' `maxPrefitLoops` decides after all.
 #' @param maxPrefitLoops Most pre-fitting cycles to run, where one cycle is a pure
-#' K-function fit of `(log kappa, log omega)` followed by a fit of `log mu` alone. This is
+#' K-function fit of `(log kappa, log sigma)` followed by a fit of `log mu` alone. This is
 #' a cap on `tolPrefitLoops` rather than the usual stopping rule, and the default of 6 sits
 #' above where that tolerance normally fires so that it rarely binds -- on study1 it would
 #' have caught the 14% of fits at `nSims = 10000` that the tolerance did not. Ignored when
@@ -264,7 +264,7 @@ min_contrast_trust_region_thomas <- function(params, parFreeIndex, repRange, thi
   }
 
   # Prefit loop: ----
-  # One cycle fits (log kappa, log omega) against the K-function alone, then log mu on
+  # One cycle fits (log kappa, log sigma) against the K-function alone, then log mu on
   # its own, both restricted to whatever the caller actually left free. Each block is
   # the same trust region iteration as the main fit, only over fewer coordinates and
   # with different contrast weights, so all three are the same call.
@@ -318,7 +318,7 @@ min_contrast_trust_region_thomas <- function(params, parFreeIndex, repRange, thi
       prefitLoopsRun <- prefitLoop
 
       # How far the whole cycle moved the parameters, measured over every free coordinate
-      # rather than one block's: a cycle that leaves (log kappa, log omega) where it found
+      # rather than one block's: a cycle that leaves (log kappa, log sigma) where it found
       # them but still shifts log mu has not settled. Once that movement drops below the
       # tolerance the blocks have stopped making progress, and what is left is the joint
       # adjustment the main fit does anyway, so there is nothing to gain from another
@@ -376,8 +376,8 @@ min_contrast_trust_region_thomas <- function(params, parFreeIndex, repRange, thi
 #' importance sampling weight taken against that ensemble.
 #'
 #' The daughter density needs the \eqn{O(n_{daughter} \times n_{parent})} kernel sums at
-#' `omega_0`, which are exactly the sums the subsequent trust-region evaluations
-#' need whenever they leave omega unchanged. They are therefore returned alongside
+#' `sigma_0`, which are exactly the sums the subsequent trust-region evaluations
+#' need whenever they leave sigma unchanged. They are therefore returned alongside
 #' the densities, ready to seed `daughter_kernel_cache`, so the ensemble is passed
 #' over once instead of once here and again on the first evaluation.
 #'
@@ -386,7 +386,7 @@ min_contrast_trust_region_thomas <- function(params, parFreeIndex, repRange, thi
 #' than dispatched per pattern.
 #'
 #' @param patternSim List of simulated point patterns.
-#' @param params Log-scale parameter vector `(log kappa, log omega, log mu)` that
+#' @param params Log-scale parameter vector `(log kappa, log sigma, log mu)` that
 #' `patternSim` was simulated from.
 #' @param printProgress Set to TRUE to report progress while computing.
 #'
@@ -394,7 +394,7 @@ min_contrast_trust_region_thomas <- function(params, parFreeIndex, repRange, thi
 #' `daughter_kernel_cache` (in the form `importance_sampling_weights_thomas` expects).
 baseline_densities_thomas <- function(patternSim, params, printProgress = FALSE){
   kappa_0 <- exp(params[1])
-  omega_0 <- exp(params[2])
+  sigma_0 <- exp(params[2])
   mu_0    <- exp(params[3])
 
   B_area   <- vapply(patternSim, function(p) p$B_area, numeric(1))
@@ -403,15 +403,15 @@ baseline_densities_thomas <- function(patternSim, params, printProgress = FALSE)
 
   if(printProgress){
     kernel_sums_0 <- mcprogress::pmclapply(X = patternSim, FUN = thomas_daughter_kernel_sums,
-                                           omega = omega_0)
+                                           sigma = sigma_0)
   } else {
     kernel_sums_0 <- parallel::mclapply(X = patternSim, FUN = thomas_daughter_kernel_sums,
-                                        omega = omega_0)
+                                        sigma = sigma_0)
   }
   log_fCond_theta_0 <- vapply(kernel_sums_0, daughter_log_density_from_sums,
                               numeric(1), mu = mu_0)
 
   return(list(log_f_kappa_0 = log_f_kappa_0,
               log_fCond_theta_0 = log_fCond_theta_0,
-              daughter_kernel_cache = list(omega = omega_0, kernel_sums = kernel_sums_0)))
+              daughter_kernel_cache = list(sigma = sigma_0, kernel_sums = kernel_sums_0)))
 }

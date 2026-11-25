@@ -55,7 +55,7 @@ min_contrast_trust_region_thomas(
 \item{thinningType}{Type of Matern thinning, 1, 2 or 3, see \code{\link{matern.thinning}}.
 It only changes how the ensembles are simulated. The importance sampling weights are
 taken over the parents and the unthinned daughters, and the thinning does not depend
-on \verb{(kappa, omega, mu)}, so the same weights are valid for every type.}
+on \verb{(kappa, sigma, mu)}, so the same weights are valid for every type.}
 
 \item{rho_hat}{Estimated intensity for data}
 
@@ -153,7 +153,7 @@ may update its conjugate direction set, for the main fit and for the pre-fitting
 because the original loop counted from 1 and stopped \emph{before} \code{2*n}).
 
 These are split because the two phases want opposite things. Pre-fitting cycles between
-a \verb{(log kappa, log omega)} block and a \verb{log mu} block, and cycling quickly beats solving
+a \verb{(log kappa, log sigma)} block and a \verb{log mu} block, and cycling quickly beats solving
 either one exactly, so a small value is right there; it also costs nothing on the \code{mu}
 block, which has one free parameter and so no direction set to update. The main fit is
 where the accuracy has to come from: on study1, scoring each fit's endpoint against a
@@ -166,7 +166,7 @@ every step (\code{FALSE}, the previous behaviour). Accumulating the set across i
 the mechanism behind Powell (1964); rebuilding it discards that, and additionally makes
 every step open with a line search along free parameter 1, which biases the search
 toward that parameter -- measured on study1's K block, where log kappa overshot its
-target by 72\% while log omega reached only a third of its own. The set is dropped back
+target by 72\% while log sigma reached only a third of its own. The set is dropped back
 to the axes whenever it goes singular, since a singular set has lost a search dimension.
 
 \strong{Only turn this on together with \code{max.directions} at \code{NULL}.} The two interact: with
@@ -266,7 +266,7 @@ error of the block fits rather than progress, so the tolerance simply never fire
 \code{maxPrefitLoops} decides after all.}
 
 \item{maxPrefitLoops}{Most pre-fitting cycles to run, where one cycle is a pure
-K-function fit of \verb{(log kappa, log omega)} followed by a fit of \verb{log mu} alone. This is
+K-function fit of \verb{(log kappa, log sigma)} followed by a fit of \verb{log mu} alone. This is
 a cap on \code{tolPrefitLoops} rather than the usual stopping rule, and the default of 6 sits
 above where that tolerance normally fires so that it rarely binds -- on study1 it would
 have caught the 14\% of fits at \code{nSims = 10000} that the tolerance did not. Ignored when
@@ -305,11 +305,11 @@ region by re-weighting that one ensemble with importance sampling (see
 to accept the step (see \code{\link{evaluate_improvement}}).
 
 Before the main fit, the parameters can optionally be pre-fitted in blocks: first
-\verb{(log kappa, log omega)} against the K-function alone, then \verb{log mu} against the full
+\verb{(log kappa, log sigma)} against the K-function alone, then \verb{log mu} against the full
 contrast function. That cycle repeats until it stops moving the parameters -- until one
 cycle shifts them by less than \code{tolPrefitLoops} -- or until \code{maxPrefitLoops} cycles have
 run, whichever comes first. Pre-fitting is skipped entirely when \code{max.iter.prefit} is 0.
 The pre-fitting is what makes this specific to the Thomas process: the K-function of
 the unthinned Thomas process does not depend on \code{mu}, which is what justifies fitting
-\verb{(log kappa, log omega)} against the K-function alone.
+\verb{(log kappa, log sigma)} against the K-function alone.
 }

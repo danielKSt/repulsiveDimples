@@ -40,7 +40,7 @@ rho_unnorm <- ggplot(data = res_kappa, aes(x = log(nSamples), y = rho_is, group 
   ylab(bquote(hat(rho)[Unnorm])) +
   ggtitle(bquote("Estimates for " * rho * ", with " *
                    kappa * " = " * .(round(exp(group$par_goal$kappa), digits = 6)) * ", "  *
-                   sigma^2 * " = " * .(round(exp(group$par_goal$omega), digits = 6)) * ", " *
+                   sigma * " = " * .(round(exp(group$par_goal$omega), digits = 6)) * ", " *
                    mu * " = " * .(round(exp(group$par_goal$mu), digits = 6)))) +
   ylim(c(0.9, 1.15))
 
@@ -53,7 +53,7 @@ K_unnorm <- ggplot(data = res_kappa, aes(x = log(nSamples), y = K_diff, group = 
   ylim(c(0,0.007)) +
   ggtitle(bquote("Estimates for " *
                    kappa * " = " * .(round(exp(group$par_goal$kappa), digits = 6)) * ", "  *
-                   sigma^2 * " = " * .(round(exp(group$par_goal$omega), digits = 6)) * ", " *
+                   sigma * " = " * .(round(exp(group$par_goal$omega), digits = 6)) * ", " *
                    mu * " = " * .(round(exp(group$par_goal$mu), digits = 6))))
 
 K_norm <- ggplot(data = res_kappa, aes(x = log(nSamples), y = K_diff_norm, group = case_ind, colour = kappasLogDiff)) +

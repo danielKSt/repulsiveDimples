@@ -38,7 +38,7 @@ the process the ensemble was simulated from.}
 \item{daughter_kernel_cache}{Optional cache passed through to \code{\link{importance_sampling_weights_thomas}}
 or \code{\link{importance_sampling_weights_varGamma}}; see those functions for details. Pass the
 \code{daughter_kernel_cache} from this call's return value into the next call to reuse cached work when
-\code{params_new}'s kernel parameters (omega, or scale and nu) are unchanged. When \code{NULL}, the cache
+\code{params_new}'s kernel parameters (sigma, or scale and nu) are unchanged. When \code{NULL}, the cache
 \code{simStepRes} already carries from its own simulation step is used instead of starting cold.}
 }
 \value{

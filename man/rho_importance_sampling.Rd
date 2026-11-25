@@ -29,6 +29,6 @@ the patterns with \code{\link{estimate_rho_baseline}}.}
 A scalar estimate of the stationary intensity under the target parameters.
 }
 \description{
-Using a thinned Thomas process simulated with parameters kappa_0, mu_0, and omega_0,
+Using a thinned Thomas process simulated with parameters kappa_0, mu_0, and sigma_0,
 we use importance sampling to estimate
 }

@@ -25,7 +25,7 @@
 #' across coordinates, so a point moving several of them at once is worse supported than
 #' any of the single-coordinate moves that make it up. Measured on study1's starting
 #' parameters at `nSims = 300`, `delta = 0.2` and `eta_trust = 0.6`, the crossings sit at
-#' `(0.086, 0.200, 0.169)` in `(log kappa, log omega, log mu)`, each at `ess/nSims = 0.6`
+#' `(0.086, 0.200, 0.169)` in `(log kappa, log sigma, log mu)`, each at `ess/nSims = 0.6`
 #' by construction, while the corner those three span comes to 0.409 -- well inside the
 #' region the requirement rejects. It takes a uniform shrink to about 0.6 of the corner
 #' before it passes.
@@ -33,7 +33,7 @@
 #' Every interpolation point is therefore checked and, if it fails, pulled back along its
 #' own ray from `x_0` to the last position that passes (see \code{\link{ess_ray_limit}}).
 #' That keeps the full width of the box on the coordinates that can take it -- which
-#' matters, since the region is markedly anisotropic, omega reaching the trust radius
+#' matters, since the region is markedly anisotropic, sigma reaching the trust radius
 #' without ever crossing while kappa crosses at less than half of it -- without ever
 #' leaving a hole in the interpolation set.
 #'
@@ -46,13 +46,13 @@
 #'
 #' The evaluations are not interchangeable, though, and the difference is large enough to
 #' plan around. `trust_function` recomputes the `O(n_daughter x n_parent)` daughter kernel
-#' sums whenever omega moves off the value its cache holds, and reuses them when it does
-#' not. At `nSims = 300` a full evaluation measured 3.2 ms with omega held and 23.4 ms with
-#' omega moved, a factor of 7. Two consequences are built into this method: a ray search
+#' sums whenever sigma moves off the value its cache holds, and reuses them when it does
+#' not. At `nSims = 300` a full evaluation measured 3.2 ms with sigma held and 23.4 ms with
+#' sigma moved, a factor of 7. Two consequences are built into this method: a ray search
 #' tries the trust radius before it bisects, so a coordinate on which `delta` binds before
 #' the requirement does costs one evaluation instead of `bisection_iterations + 1` (on the
-#' measurement above this is exactly what omega does), and the interpolation points are
-#' evaluated grouped by omega, so a set holding three distinct omegas pays for three sets
+#' measurement above this is exactly what sigma does), and the interpolation points are
+#' evaluated grouped by sigma, so a set holding three distinct sigmas pays for three sets
 #' of kernel sums rather than one per point.
 #'
 #' @param x_0 Parameter values the ensemble behind `trust_function` was simulated from,
@@ -319,12 +319,12 @@ ess_box_bisect <- function(x_0, delta, trust_function, eta_trust, nSims,
 #' pulled back along its own ray from `x_0` until it passes, rather than dropped, since a
 #' dropped point leaves the interpolation system underdetermined.
 #'
-#' The points are visited in order of their omega coordinate. `trust_function` keeps the
-#' daughter kernel sums for one omega at a time and recomputing them costs about seven
-#' times an evaluation that does not, so the points that share an omega -- the two axial
+#' The points are visited in order of their sigma coordinate. `trust_function` keeps the
+#' daughter kernel sums for one sigma at a time and recomputing them costs about seven
+#' times an evaluation that does not, so the points that share an sigma -- the two axial
 #' points of every other coordinate, in particular -- are cheaper taken together than
 #' interleaved with points that move it. The saving is partial rather than total, since a
-#' point that needs repair walks its own ray and moves omega again on the way.
+#' point that needs repair walks its own ray and moves sigma again on the way.
 #'
 #' @param x_0 Centre of the trust region and of the interpolation set.
 #' @param box Per-coordinate offsets from \code{\link{ess_box_bisect}}.
@@ -342,7 +342,7 @@ quadratic_interp_set <- function(x_0, box, delta, trust_function, eta_trust, nSi
                                  bisection_iterations, state){
   n <- length(x_0)
 
-  # Offsets first, evaluations second, so the points can be reordered by omega before any
+  # Offsets first, evaluations second, so the points can be reordered by sigma before any
   # of them is paid for.
   S <- matrix(0, nrow = 1, ncol = n)
   for(i in seq_len(n)){
@@ -381,12 +381,12 @@ quadratic_interp_set <- function(x_0, box, delta, trust_function, eta_trust, nSi
   }
 
   f <- rep(NA_real_, nrow(S))
-  # Free coordinate 2 is omega whenever the free set starts at log kappa, which covers
+  # Free coordinate 2 is sigma whenever the free set starts at log kappa, which covers
   # both the main fit and the K-function block. On any other subset this groups by
   # whatever coordinate happens to sit there, which costs nothing beyond the ordering
   # being no better than arbitrary.
-  omega_col <- if(n >= 2) 2 else 1
-  visit <- order(S[, omega_col])
+  sigma_col <- if(n >= 2) 2 else 1
+  visit <- order(S[, sigma_col])
   for(idx in visit){
     if(all(S[idx, ] == 0)){
       # x_0 itself. Always feasible, and evaluating it is how the model gets its constant.

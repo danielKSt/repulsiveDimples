@@ -5,31 +5,31 @@
 #'
 #' @param kappa Kappa parameter
 #' @param mu mu parameter
-#' @param omega omega parameter
+#' @param sigma standard deviation of the Gaussian kernel
 #' @param kappa_0 Kappa parameter
 #' @param mu_0 mu parameter
-#' @param omega_0 omega parameter
+#' @param sigma_0 standard deviation of the Gaussian kernel
 #' @param log_f_kappa_0 Parent null density
 #' @param log_fCond_theta_0 Daughter null density
 #' @param patternSim List of point patterns to use for estimation
 #' @param parallel Set to TRUE to use parallel computing
 #' @param daughter_kernel_cache Optional cache from a previous call, as returned in this
-#' call's output (a list with `omega` and per-pattern `kernel_sums`). The expensive,
-#' omega-only part of the daughter log-density is only recomputed when `omega` differs
+#' call's output (a list with `sigma` and per-pattern `kernel_sums`). The expensive,
+#' sigma-only part of the daughter log-density is only recomputed when `sigma` differs
 #' from the cached value; otherwise the cached kernel sums are reused. Pass `NULL`
 #' (the default) to always recompute.
 #'
 #' @return A list with `w_is` (the importance sampling weights) and `daughter_kernel_cache`
-#' (to be passed back into the next call for reuse when `omega` is unchanged). When the
+#' (to be passed back into the next call for reuse when `sigma` is unchanged). When the
 #' target and simulation parameters coincide the weights are all exactly 1 and
 #' `daughter_kernel_cache` is returned unchanged.
 #'
 #' @export
-importance_sampling_weights_thomas <- function(kappa, mu, omega, kappa_0 = NULL, mu_0 = NULL, omega_0 = NULL,
+importance_sampling_weights_thomas <- function(kappa, mu, sigma, kappa_0 = NULL, mu_0 = NULL, sigma_0 = NULL,
                                                patternSim, log_f_kappa_0 = NULL, log_fCond_theta_0 = NULL,
                                                parallel = FALSE, daughter_kernel_cache = NULL){
 
-  if(isTRUE(kappa == kappa_0) && isTRUE(omega == omega_0) && isTRUE(mu == mu_0)){
+  if(isTRUE(kappa == kappa_0) && isTRUE(sigma == sigma_0) && isTRUE(mu == mu_0)){
     return(list(w_is = rep(1, length(patternSim)),
                 daughter_kernel_cache = daughter_kernel_cache)) # All parameters being equal gives w_is = 1
   }
@@ -45,32 +45,32 @@ importance_sampling_weights_thomas <- function(kappa, mu, omega, kappa_0 = NULL,
   log_f_kappa <- B_area*(1 - kappa) + n_parent*log(kappa)
 
   # The expensive O(n_daughter x n_parent) part of the daughter density depends
-  # on omega only, so it is computed once per omega and reused.
-  if(is.null(daughter_kernel_cache) || !isTRUE(all.equal(daughter_kernel_cache$omega, omega))){
+  # on sigma only, so it is computed once per sigma and reused.
+  if(is.null(daughter_kernel_cache) || !isTRUE(all.equal(daughter_kernel_cache$sigma, sigma))){
     if(parallel){
-      kernel_sums <- parallel::mclapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega)
+      kernel_sums <- parallel::mclapply(X = patternSim, FUN = thomas_daughter_kernel_sums, sigma = sigma)
     } else {
-      kernel_sums <- lapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega)
+      kernel_sums <- lapply(X = patternSim, FUN = thomas_daughter_kernel_sums, sigma = sigma)
     }
-    daughter_kernel_cache <- list(omega = omega, kernel_sums = kernel_sums)
+    daughter_kernel_cache <- list(sigma = sigma, kernel_sums = kernel_sums)
   }
 
   log_fCond_theta <- vapply(daughter_kernel_cache$kernel_sums,
                             daughter_log_density_from_sums, numeric(1), mu = mu)
 
   if(is.null(log_fCond_theta_0)){
-    if(isTRUE(all.equal(omega_0, omega))){
+    if(isTRUE(all.equal(sigma_0, sigma))){
       # Baseline and target share the dispersal parameter, so the kernel sums just
       # computed are exactly the ones the baseline density needs - only the cheap
-      # mu-dependent combine differs. This is the common case when omega is not
+      # mu-dependent combine differs. This is the common case when sigma is not
       # one of the parameters being perturbed.
       log_fCond_theta_0 <- vapply(daughter_kernel_cache$kernel_sums,
                                   daughter_log_density_from_sums, numeric(1), mu = mu_0)
     } else {
       if(parallel){
-        kernel_sums_0 <- parallel::mclapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega_0)
+        kernel_sums_0 <- parallel::mclapply(X = patternSim, FUN = thomas_daughter_kernel_sums, sigma = sigma_0)
       } else {
-        kernel_sums_0 <- lapply(X = patternSim, FUN = thomas_daughter_kernel_sums, omega = omega_0)
+        kernel_sums_0 <- lapply(X = patternSim, FUN = thomas_daughter_kernel_sums, sigma = sigma_0)
       }
       log_fCond_theta_0 <- vapply(kernel_sums_0, daughter_log_density_from_sums,
                                   numeric(1), mu = mu_0)
@@ -89,7 +89,7 @@ importance_sampling_weights_thomas <- function(kappa, mu, omega, kappa_0 = NULL,
 #' dispersal kernel. Specifically, conditional on \eqn{C}, the daughters form a
 #' Poisson point process on \eqn{W} with conditional intensity
 #' \eqn{\lambda(x \mid C) = \mu \sum_{c_j \in C} k(x - c_j)}, where
-#' \eqn{k(x - c_j) = \frac{1}{2\pi\omega^2}\exp\!\left(-\frac{\|x-c_j\|^2}{2\omega^2}\right)}
+#' \eqn{k(x - c_j) = \frac{1}{2\pi\sigma^2}\exp\!\left(-\frac{\|x-c_j\|^2}{2\sigma^2}\right)}
 #' is the Gaussian dispersal kernel. The log-density with respect to the unit
 #' rate Poisson process reference measure is then:
 #' \deqn{
@@ -101,7 +101,7 @@ importance_sampling_weights_thomas <- function(kappa, mu, omega, kappa_0 = NULL,
 #' via normal CDF differences for the rectangular window.
 #'
 #' @param mu       Positive scalar. Mean number of daughters per parent.
-#' @param omega    Positive scalar. Standard deviation of the Gaussian dispersal kernel.
+#' @param sigma    Positive scalar. Standard deviation of the Gaussian dispersal kernel.
 #' @param parent   A \code{data.frame} with columns \code{x} and \code{y} giving parent locations,
 #' typically restricted to an enlarged window \eqn{B \supset W}.
 #' @param daughter A \code{data.frame} with columns \code{x} and \code{y} giving daughter locations,
@@ -114,26 +114,26 @@ importance_sampling_weights_thomas <- function(kappa, mu, omega, kappa_0 = NULL,
 #'
 #' @importFrom stats pnorm dnorm
 #' @export
-thomas_daughter_log_density <- function(pattern = NULL, mu, omega,
+thomas_daughter_log_density <- function(pattern = NULL, mu, sigma,
                                         parent = NULL, daughter = NULL,
                                         xlim = NULL, ylim = NULL) {
-  kernel_sums <- thomas_daughter_kernel_sums(pattern = pattern, omega = omega,
+  kernel_sums <- thomas_daughter_kernel_sums(pattern = pattern, sigma = sigma,
                                              parent = parent, daughter = daughter,
                                              xlim = xlim, ylim = ylim)
   return(daughter_log_density_from_sums(mu = mu, kernel_sums = kernel_sums))
 }
 
-#' Kernel sums for the Thomas daughter log-density (the omega-dependent part)
+#' Kernel sums for the Thomas daughter log-density (the sigma-dependent part)
 #'
 #' @description
 #' Computes the parts of \code{\link{thomas_daughter_log_density}} that depend on
-#' \eqn{\omega} (and the fixed parent/daughter positions) but not on \eqn{\mu}:
+#' \eqn{\sigma} (and the fixed parent/daughter positions) but not on \eqn{\mu}:
 #' \eqn{\sum_j p_W(c_j)} and \eqn{\sum_i \log\left(\sum_j k(x_i-c_j)\right)}. These are
 #' the expensive, \eqn{O(n_{daughter} \times n_{parent})} parts of the log-density. Split
 #' out so they can be computed once and reused across evaluations that only change
 #' \eqn{\mu}, via \code{\link{daughter_log_density_from_sums}}.
 #'
-#' @param omega    Positive scalar. Standard deviation of the Gaussian dispersal kernel.
+#' @param sigma    Positive scalar. Standard deviation of the Gaussian dispersal kernel.
 #' @param parent   A \code{data.frame} with columns \code{x} and \code{y} giving parent locations.
 #' @param daughter A \code{data.frame} with columns \code{x} and \code{y} giving daughter locations.
 #' @param xlim     Numeric vector of length 2. The x-range of the observation window \eqn{W}.
@@ -145,7 +145,7 @@ thomas_daughter_log_density <- function(pattern = NULL, mu, omega,
 #'
 #' @importFrom stats pnorm dnorm
 #' @export
-thomas_daughter_kernel_sums <- function(pattern = NULL, omega,
+thomas_daughter_kernel_sums <- function(pattern = NULL, sigma,
                                         parent = NULL, daughter = NULL,
                                         xlim = NULL, ylim = NULL){
   if(!is.null(pattern)){
@@ -158,8 +158,8 @@ thomas_daughter_kernel_sums <- function(pattern = NULL, omega,
 
   S_pW <- 0
   if(nrow(parent) > 0){
-    p_W <- (stats::pnorm(xlim[2], mean = parent$x, sd = omega) - stats::pnorm(xlim[1], mean = parent$x, sd = omega)) *
-      (stats::pnorm(ylim[2], mean = parent$y, sd = omega) - stats::pnorm(ylim[1], mean = parent$y, sd = omega))
+    p_W <- (stats::pnorm(xlim[2], mean = parent$x, sd = sigma) - stats::pnorm(xlim[1], mean = parent$x, sd = sigma)) *
+      (stats::pnorm(ylim[2], mean = parent$y, sd = sigma) - stats::pnorm(ylim[1], mean = parent$y, sd = sigma))
     S_pW <- sum(p_W)
   }
 
@@ -167,12 +167,12 @@ thomas_daughter_kernel_sums <- function(pattern = NULL, omega,
   if (nrow(daughter) > 0) {
     dx <- outer(daughter$x, parent$x, "-")
     dy <- outer(daughter$y, parent$y, "-")
-    # dnorm(dx, 0, omega)*dnorm(dy, 0, omega) equals
-    # exp(-(dx^2 + dy^2)/(2*omega^2)) / (2*pi*omega^2). Evaluating it in that form
+    # dnorm(dx, 0, sigma)*dnorm(dy, 0, sigma) equals
+    # exp(-(dx^2 + dy^2)/(2*sigma^2)) / (2*pi*sigma^2). Evaluating it in that form
     # needs one exp() over the pair matrix instead of two dnorm() calls, and the
     # constant factor comes out of the row sums as a single term per daughter.
-    E <- exp(-(dx*dx + dy*dy) / (2*omega^2))
-    sumLogK <- sum(log(rowSums(E))) - nrow(daughter)*log(2*pi*omega^2)
+    E <- exp(-(dx*dx + dy*dy) / (2*sigma^2))
+    sumLogK <- sum(log(rowSums(E))) - nrow(daughter)*log(2*pi*sigma^2)
   }
 
   return(list(area_W = area_W, S_pW = S_pW, sumLogK = sumLogK, nDaughter = nrow(daughter)))

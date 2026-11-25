@@ -40,7 +40,7 @@ trust_region_loop(
 }
 \arguments{
 \item{params}{Full log-scale parameter vector to start from, in the order the kernel
-uses: \verb{(log kappa, log omega, log mu)} for \code{kernelType = "thomas"} and
+uses: \verb{(log kappa, log sigma, log mu)} for \code{kernelType = "thomas"} and
 \verb{(log kappa, log scale, log mu, nu)} for \code{kernelType = "varGamma"}, where the shape \code{nu}
 is on its natural scale since it can be negative. Entries outside \code{parFreeIndex} are
 held fixed throughout.}
@@ -157,7 +157,7 @@ every step (\code{FALSE}, the previous behaviour). Accumulating the set across i
 the mechanism behind Powell (1964); rebuilding it discards that, and additionally makes
 every step open with a line search along free parameter 1, which biases the search
 toward that parameter -- measured on study1's K block, where log kappa overshot its
-target by 72\% while log omega reached only a third of its own. The set is dropped back
+target by 72\% while log sigma reached only a third of its own. The set is dropped back
 to the axes whenever it goes singular, since a singular set has lost a search dimension.
 
 \strong{Only turn this on together with \code{max.directions} at \code{NULL}.} The two interact: with

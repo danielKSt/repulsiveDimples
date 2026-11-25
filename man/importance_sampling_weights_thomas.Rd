@@ -7,10 +7,10 @@
 importance_sampling_weights_thomas(
   kappa,
   mu,
-  omega,
+  sigma,
   kappa_0 = NULL,
   mu_0 = NULL,
-  omega_0 = NULL,
+  sigma_0 = NULL,
   patternSim,
   log_f_kappa_0 = NULL,
   log_fCond_theta_0 = NULL,
@@ -23,13 +23,13 @@ importance_sampling_weights_thomas(
 
 \item{mu}{mu parameter}
 
-\item{omega}{omega parameter}
+\item{sigma}{standard deviation of the Gaussian kernel}
 
 \item{kappa_0}{Kappa parameter}
 
 \item{mu_0}{mu parameter}
 
-\item{omega_0}{omega parameter}
+\item{sigma_0}{standard deviation of the Gaussian kernel}
 
 \item{patternSim}{List of point patterns to use for estimation}
 
@@ -40,14 +40,14 @@ importance_sampling_weights_thomas(
 \item{parallel}{Set to TRUE to use parallel computing}
 
 \item{daughter_kernel_cache}{Optional cache from a previous call, as returned in this
-call's output (a list with \code{omega} and per-pattern \code{kernel_sums}). The expensive,
-omega-only part of the daughter log-density is only recomputed when \code{omega} differs
+call's output (a list with \code{sigma} and per-pattern \code{kernel_sums}). The expensive,
+sigma-only part of the daughter log-density is only recomputed when \code{sigma} differs
 from the cached value; otherwise the cached kernel sums are reused. Pass \code{NULL}
 (the default) to always recompute.}
 }
 \value{
 A list with \code{w_is} (the importance sampling weights) and \code{daughter_kernel_cache}
-(to be passed back into the next call for reuse when \code{omega} is unchanged). When the
+(to be passed back into the next call for reuse when \code{sigma} is unchanged). When the
 target and simulation parameters coincide the weights are all exactly 1 and
 \code{daughter_kernel_cache} is returned unchanged.
 }
