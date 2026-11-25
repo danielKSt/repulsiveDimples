@@ -47,7 +47,7 @@ min_dist <- find_min_dist(points_input = dimples, l = sidelength, timescale = ti
 We find an initial parameter guess through ...
 
 ```{r initial_params}
-start_fitted <- thomas.estK(X = K_hat, rmin = 2*min_dist, rmax = sidelength/3)$par
+start_fitted <- thomas.estK(X = K_hat, rmin = 2*min_dist, rmax = sidelength/3)$clustpar
 lambda <- -log(1 - pi*rho_hat*min_dist^2)/(pi*min_dist^2)
 start_params <- log(c(start_fitted[1], start_fitted[2], lambda/start_fitted[1]))
 names(start_params) <- c("kappa", "omega", "mu")

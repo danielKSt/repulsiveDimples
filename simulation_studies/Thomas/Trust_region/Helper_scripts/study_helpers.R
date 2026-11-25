@@ -113,7 +113,7 @@ simulate_for_study_settings <- function(parThomas, studyNr, nTrue, nUnions, side
 # We use the intensity for thinningType 2 for all cases to avoid Lambert's W function in type 1,
 # and since type 3 is not available analyticaly
 study_start_params <- function(K_hat_unions, par_thomas, rho_hat){
-  start_fitted <- thomas.estK(X = K_hat_unions, rmin = 2*par_thomas$rRange, rmax = 3)$par
+  start_fitted <- thomas.estK(X = K_hat_unions, rmin = 2*par_thomas$rRange, rmax = 3)$clustpar
   lambda <- -log(1 - pi*rho_hat*par_thomas$rRange^2)/(pi*par_thomas$rRange^2)
   start_params <- log(c(start_fitted[1], start_fitted[2], lambda/start_fitted[1]))
   names(start_params) <- c("kappa", "omega", "mu")

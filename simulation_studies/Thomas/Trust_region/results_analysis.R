@@ -21,7 +21,7 @@ load(file = paste0(studyFolder, "Data/study", studyNr, ".RDa"))
 
 startFitted <- thomas.estK(X = K_hat_unions, rmin = 2*par_thomas$rRange, rmax = 3)
 lambda <- -log(1-pi*rho_hat*par_thomas$rRange^2)/(pi*par_thomas$rRange^2)
-startFitted <- startFitted$par
+startFitted <- startFitted$clustpar
 
 startParams <- log(c(startFitted[1], startFitted[2], lambda/startFitted[1]))
 names(startParams) <- c("kappa", "omega", "mu")

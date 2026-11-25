@@ -73,7 +73,7 @@ one_rep <- function(i, m, seedBase){
 
   # The starting point is derived from this replicate's own K, as it would be in practice,
   # so its error propagates into the fit rather than being handed in for free.
-  st <- try(thomas.estK(X = K_m, rmin = 2*par_thomas$rRange, rmax = 3)$par, silent = TRUE)
+  st <- try(thomas.estK(X = K_m, rmin = 2*par_thomas$rRange, rmax = 3)$clustpar, silent = TRUE)
   if(inherits(st, "try-error") || any(!is.finite(st)) || any(st <= 0)){
     return(list(m = m, rep = i, par = rep(NA_real_, 3), start = rep(NA_real_, 3),
                 rho_err = rho_err, K_err = K_err, secs = NA_real_, note = "thomas.estK failed"))
