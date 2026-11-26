@@ -56,8 +56,8 @@ result_verification <- function(rho_hat, K_hat, param_estim, repRange_estim, thi
   print(paste("Target intensity: ", rho_hat))
   print(paste("Parameter intensity: ", rho_verif))
 
-  graphics::plot(x = K_hat$r, y = K_hat$border^q, type = "l", ylim = c(0,max(c(K_hat$border^q, K_verif$border^q))),
+  graphics::plot(x = K_hat$r, y = K_hat$trans^q, type = "l", ylim = c(0,max(c(K_hat$trans^q, K_verif$trans^q))),
        ylab = "K(r)", xlab = "r")
-  graphics::lines(x = K_verif$r, y = K_verif$border^q, col = "orange", lty = 2)
+  graphics::lines(x = K_verif$r, y = K_verif$trans^q, col = "orange", lty = 2)
   graphics::legend("topleft", c("Target K-function", "Parameter K-function"), col = c("black", "orange"), lty = c(1, 2))
 }

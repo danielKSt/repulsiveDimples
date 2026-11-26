@@ -69,7 +69,8 @@ one_rep <- function(i, m, seedBase){
   # is the same functional the contrast minimises, so it is on the scale the fit cares
   # about rather than an arbitrary norm.
   rho_err <- abs(rho_m - rho_hat)/rho_hat
-  K_err   <- sqrt(sum((K_m$border^(1/4) - K_hat$border^(1/4))^2, na.rm = TRUE)*dr)
+  # study1's saved K_hat still calls its (translation-corrected) column `border`.
+  K_err   <- sqrt(sum((K_m$trans^(1/4) - K_hat$border^(1/4))^2, na.rm = TRUE)*dr)
 
   # The starting point is derived from this replicate's own K, as it would be in practice,
   # so its error propagates into the fit rather than being handed in for free.

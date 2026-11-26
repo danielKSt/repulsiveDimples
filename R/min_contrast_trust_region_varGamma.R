@@ -37,7 +37,7 @@
 #' @export
 min_contrast_trust_region_varGamma <- function(params, parFreeIndex = c(1, 2, 3), repRange, thinningType = 2,
                                                rho_hat, K_hat, xlims, ylims, nSims, deltaInit, eta, deltaMax,
-                                               deltaMin = 0.0001, wq = c(1000, 1/4), normalized = TRUE,
+                                               deltaMin = 0.0001, wq = c(1000, 1/4), r0 = 0, normalized = TRUE,
                                                eta_trust = 0.6, eta_converged = 0.99,
                                                validate.converged = FALSE,
                                                subsection_count = 11, line_iterations = 4,
@@ -57,7 +57,7 @@ min_contrast_trust_region_varGamma <- function(params, parFreeIndex = c(1, 2, 3)
   res <- trust_region_loop(params = params, parFreeIndex = parFreeIndex,
                            kernelType = "varGamma",
                            repRange = repRange, thinningType = thinningType,
-                           rho_hat = rho_hat, K_hat = K_hat,
+                           rho_hat = rho_hat, K_hat = K_hat, r0 = r0,
                            xlims = xlims, ylims = ylims, nSims = nSims,
                            deltaInit = deltaInit, eta = eta, deltaMax = deltaMax,
                            deltaMin = deltaMin, wq = wq, normalized = normalized,

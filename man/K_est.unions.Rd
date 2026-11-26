@@ -22,7 +22,10 @@ K_est.unions(
 
 \item{l}{Side length of observation window}
 
-\item{spacing}{How far apart are observations window in order to be independent?}
+\item{spacing}{Unused. The snapshots used to be laid out \code{spacing*l} apart on an
+explicit union window; the estimate does not depend on the layout as long as the
+copies are far enough apart that no pair crosses between them. Kept so that existing
+calls still work.}
 
 \item{rMax}{Max radius for which estimation is performed}
 
@@ -32,7 +35,22 @@ K_est.unions(
 
 \item{timescale}{How many indices apart do snapshots need to be in order to be independent?}
 }
+\value{
+An \code{fv} object with columns \code{r}, \code{theo} (the Poisson value \eqn{\pi r^2}) and
+\code{trans} (the estimate), so that it can be passed directly to e.g.
+\code{spatstat.model::thomas.estK}.
+}
 \description{
-Function for estimating the K-function given a list of point patterns
-The point patterns are assumed to come from a time series of point patterns
+Translation-corrected estimate of Ripley's K-function from independent snapshots
+observed in the same square window \eqn{W=[0,l]^2}. This is the union approach: the
+snapshots are treated as one pattern on a union \eqn{W^*} of \eqn{m} disjoint, well
+separated copies of \eqn{W}, and the result is what
+\code{spatstat.explore::Kest(..., correction = "translate")} would give on that union,
+\deqn{\hat K(r)=\frac{|W^*|^2}{n(n-1)}\sum_{t}\sum_{i\neq j}
+\frac{1\{\|x_i-x_j\|\leq r\}}{|W^*\cap W^*_{x_i-x_j}|},}
+with the inner sum over pairs within snapshot \eqn{t}, \eqn{n} the total number of
+points and \eqn{|W^*\cap W^*_v|=m(l-|v_1|)(l-|v_2|)}. It is computed per snapshot
+with \code{\link{estimate_K_lambda_baseline}}, the same translation-corrected sum the
+simulated ensembles use, rather than by spatstat on the union window, whose set
+covariance spatstat only approximates on a pixel grid for non-rectangular windows.
 }

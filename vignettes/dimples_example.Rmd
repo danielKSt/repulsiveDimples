@@ -41,7 +41,7 @@ K_hat <- K_est.unions(points_input = dimples, l = sidelength,
                       rMax = 4,
                       dr = 0.05)
 
-min_dist <- find_min_dist(points_input = dimples, l = sidelength, timescale = timescale)
+min_dist <- find_min_dist(points_input = dimples, l = sidelength, timescale = 1)
 ```
 
 We find an initial parameter guess through ...

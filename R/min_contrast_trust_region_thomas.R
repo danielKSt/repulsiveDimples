@@ -27,6 +27,7 @@
 #' @param K_hat Estimated K-function for data
 #' @param rho_hat Estimated intensity for data
 #' @param wq Weights for contrast function
+#' @inheritParams trust_region_loop
 #' @param normalized Normalize IS weights?
 #' @param eta_trust Smallest effective sample size, as a fraction of `nSims`, an iterate
 #' proposed by \code{\link{trust_step}} is allowed to have. Between 0 and 1.
@@ -237,7 +238,7 @@
 #' @export
 min_contrast_trust_region_thomas <- function(params, parFreeIndex, repRange, thinningType = 2, rho_hat, K_hat,
                                              xlims, ylims, nSims, deltaInit, eta, deltaMax, deltaMin = 0.0001,
-                                             wq = c(1000, 1/4), normalized = TRUE, eta_trust = 0.6,
+                                             wq = c(1000, 1/4), r0 = 0, normalized = TRUE, eta_trust = 0.6,
                                              eta_converged = 0.99, validate.converged = FALSE,
                                              subsection_count.main = 11, subsection_count.prefit = 11,
                                              line_iterations.main = 4, line_iterations.prefit = 4,
@@ -294,7 +295,7 @@ min_contrast_trust_region_thomas <- function(params, parFreeIndex, repRange, thi
         blockRes <- trust_region_loop(params = params, parFreeIndex = block$index,
                                       kernelType = "thomas",
                                       repRange = repRange, thinningType = thinningType,
-                                      rho_hat = rho_hat, K_hat = K_hat,
+                                      rho_hat = rho_hat, K_hat = K_hat, r0 = r0,
                                       xlims = xlims, ylims = ylims, nSims = nSims,
                                       deltaInit = deltaInit, eta = eta, deltaMax = deltaMax,
                                       deltaMin = deltaMin, wq = block$wq, normalized = normalized,
@@ -344,7 +345,7 @@ min_contrast_trust_region_thomas <- function(params, parFreeIndex, repRange, thi
   res <- trust_region_loop(params = params, parFreeIndex = parFreeIndex,
                            kernelType = "thomas",
                            repRange = repRange, thinningType = thinningType,
-                           rho_hat = rho_hat, K_hat = K_hat,
+                           rho_hat = rho_hat, K_hat = K_hat, r0 = r0,
                            xlims = xlims, ylims = ylims, nSims = nSims,
                            deltaInit = deltaInit, eta = eta, deltaMax = deltaMax,
                            deltaMin = deltaMin, wq = wq, normalized = normalized,

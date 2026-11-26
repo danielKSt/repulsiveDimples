@@ -86,7 +86,7 @@ contrast_is <- function(simStepRes, params_0, params_new, rho_hat, K_hat,
 #'
 #' @export
 contrast_function <- function(rho_par, rho_hat, K_par, K_hat, wq = c(100, 1/4)){
-  K_res <- sum(abs(K_par$border^wq[2] - K_hat$border^wq[2])^2)*(K_hat$r[2]-K_hat$r[1])
+  K_res <- sum(abs(K_par$trans^wq[2] - K_hat$trans^wq[2])^2)*(K_hat$r[2]-K_hat$r[1])
   rho_res <- abs(rho_par-rho_hat)^2
   return(wq[1]*rho_res+sqrt(K_res))
 }

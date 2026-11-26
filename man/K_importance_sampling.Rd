@@ -34,7 +34,7 @@ are estimated from the patterns.}
 \item{normalized}{Set to TRUE if you want to normalize the importance sampling ratios}
 }
 \value{
-A \code{data.frame} with columns \code{r} and \code{border}, giving the estimated K-function
+A \code{data.frame} with columns \code{r} and \code{trans}, giving the estimated K-function
 under the target parameters.
 }
 \description{

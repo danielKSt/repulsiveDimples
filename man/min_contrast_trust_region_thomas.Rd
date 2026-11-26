@@ -19,6 +19,7 @@ min_contrast_trust_region_thomas(
   deltaMax,
   deltaMin = 1e-04,
   wq = c(1000, 1/4),
+  r0 = 0,
   normalized = TRUE,
   eta_trust = 0.6,
   eta_converged = 0.99,
@@ -76,6 +77,10 @@ on \verb{(kappa, sigma, mu)}, so the same weights are valid for every type.}
 \item{deltaMin}{Convergence tolerance for trust region radius}
 
 \item{wq}{Weights for contrast function}
+
+\item{r0}{Smallest radius included in the contrast. Rows of \code{K_hat} with a radius below \code{r0}
+are dropped before fitting, so the K part of the contrast is integrated from \code{r0} to
+the largest radius of \code{K_hat}. The default 0 uses all of \code{K_hat}.}
 
 \item{normalized}{Normalize IS weights?}
 

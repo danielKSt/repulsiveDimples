@@ -30,7 +30,7 @@ patterns with \code{\link{estimate_K_lambda_baseline}}.}
 \item{normalized}{Set to TRUE if you want to normalize the importance sampling ratios}
 }
 \value{
-A \code{data.frame} with columns \code{r} and \code{border}, giving the estimated
+A \code{data.frame} with columns \code{r} and \code{trans}, giving the estimated
 unnormalized K-function under the target parameters.
 }
 \description{

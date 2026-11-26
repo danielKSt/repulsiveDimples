@@ -33,16 +33,16 @@ as_ppp <- function(pat, l = sidelength) {
 }
 
 
-test_that("a single snapshot reproduces spatstat's Kest on that pattern", {
+test_that("a single snapshot reproduces spatstat's translation-corrected Kest", {
   pat <- one_pattern()
 
   union_K <- K_est.unions(points_input = list(pat), l = sidelength, spacing = 5,
                           r_vec = r_vec, timescale = 1)
-  direct_K <- spatstat.explore::Kest(as_ppp(pat), r = r_vec, correction = "border")
+  direct_K <- spatstat.explore::Kest(as_ppp(pat), r = r_vec, correction = "translate")
 
-  # One snapshot means one box holding one copy of the pattern, so this is not merely
-  # close to the direct estimate -- it is the same computation.
-  expect_equal(union_K$border, direct_K$border, tolerance = 1e-12)
+  # On a rectangle spatstat's translation weights are exact, so this is the same
+  # estimator computed two ways.
+  expect_equal(union_K$trans, direct_K$trans, tolerance = 1e-10)
   expect_equal(union_K$r, direct_K$r, tolerance = 1e-12)
 })
 
@@ -60,19 +60,19 @@ test_that("a single snapshot is not silently duplicated", {
 test_that("a single snapshot does not union in an empty second box", {
   pat <- one_pattern()
 
-  # The spurious box doubled the window area without adding points. Border-corrected
+  # The spurious box doubled the window area without adding points. The estimated
   # K divides by the intensity estimated over the whole union, so an extra empty box
   # inflates K even once the duplication is gone. Comparing against Kest on the plain
   # window pins the area down; comparing against the pre-fix value guards the number
   # that was actually observed.
   union_K <- K_est.unions(points_input = list(pat), l = sidelength, spacing = 5,
                           r_vec = r_vec, timescale = 1)
-  at_one <- union_K$border[which.min(abs(union_K$r - 1))]
+  at_one <- union_K$trans[which.min(abs(union_K$r - 1))]
 
   expect_equal(at_one,
                spatstat.explore::Kest(as_ppp(pat), r = r_vec,
-                                      correction = "border")$border[which.min(abs(r_vec - 1))],
-               tolerance = 1e-12)
+                                      correction = "translate")$trans[which.min(abs(r_vec - 1))],
+               tolerance = 1e-10)
   expect_lt(at_one, 5)   # the broken version returned 9.148 here
 })
 
@@ -85,10 +85,11 @@ test_that("m identical snapshots give the same K as a single snapshot", {
   for (m in c(2, 5)) {
     many <- K_est.unions(points_input = rep(list(pat), m), l = sidelength, spacing = 5,
                          r_vec = r_vec, timescale = 1)
-    # The boxes are disjoint and spacing*l apart, so no pair crosses between copies and
-    # each copy's border distances are its own box's. The estimate is therefore the
-    # same up to the arithmetic of the larger window.
-    expect_equal(many$border, one$border, tolerance = 1e-6)
+    # No pair crosses between copies, so the pair sum grows by m. The squared intensity
+    # is n(n-1)/|W*|^2, as in Kest, and n(n-1) grows slightly faster than m^2, so the
+    # estimate is rescaled by exactly m(n-1)/(mn-1), the same factor as for the pcf.
+    n <- nrow(pat)
+    expect_equal(many$trans, one$trans*m*(n - 1)/(m*n - 1), tolerance = 1e-12)
   }
 })
 
@@ -104,7 +105,7 @@ test_that("K_est.unions handles snapshots whose only pattern is the last one", {
   leading  <- K_est.unions(points_input = list(pat, 0, 0), l = sidelength, spacing = 5,
                            r_vec = r_vec, timescale = 1)
 
-  expect_equal(trailing$border, leading$border, tolerance = 1e-12)
+  expect_equal(trailing$trans, leading$trans, tolerance = 1e-12)
 })
 
 test_that("pcf_est.unions takes its points in the same coordinates as K_est.unions", {
@@ -159,11 +160,19 @@ test_that("both estimators lay snapshots out on the same union window", {
 
   inp <- rep(list(pat), m)
 
+  # spatstat only approximates the translation weights on a non-rectangular window, so
+  # K is checked against the pooled translation estimator written out by hand instead.
+  pooled <- sapply(r_vec, function(r) {
+    d  <- as.matrix(dist(pat[, 1:2]))
+    dx <- abs(outer(pat$x, pat$x, "-")); dy <- abs(outer(pat$y, pat$y, "-"))
+    w  <- (d <= r & row(d) != col(d))/(m*(sidelength - dx)*(sidelength - dy))
+    n  <- m*nrow(pat)
+    m*sum(w)*(m*sidelength^2)^2/(n*(n - 1))
+  })
   expect_equal(
     K_est.unions(points_input = inp, l = sidelength, spacing = spacing,
-                 r_vec = r_vec, timescale = 1)$border,
-    spatstat.explore::Kest(by_hand, r = r_vec, correction = "border")$border,
-    tolerance = 1e-12)
+                 r_vec = r_vec, timescale = 1)$trans,
+    pooled, tolerance = 1e-10)
 
   got_pcf <- suppressWarnings(
     pcf_est.unions(points_input = inp, bw = 0.15, l = sidelength, spacing = spacing,

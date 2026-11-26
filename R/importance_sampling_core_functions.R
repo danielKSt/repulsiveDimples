@@ -60,7 +60,7 @@ estimate_rho_baseline <- function(pattern){
 #' to divide the unnormalized K-function by the squared intensity.
 #' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
 #'
-#' @return A `data.frame` with columns `r` and `border`, giving the estimated K-function
+#' @return A `data.frame` with columns `r` and `trans`, giving the estimated K-function
 #' under the target parameters.
 #'
 #' @export
@@ -72,7 +72,7 @@ K_importance_sampling <- function(w_is, K_lambda_baseline, rho_baseline,
                                             rho_baseline = rho_baseline, normalized = normalized)^2
 
   K_res <- K_lambda
-  K_res$border <- K_res$border/lambda_squared
+  K_res$trans <- K_res$trans/lambda_squared
   return(K_res)
 }
 
@@ -92,7 +92,7 @@ K_importance_sampling <- function(w_is, K_lambda_baseline, rho_baseline,
 #' `NULL` and the baselines have to be estimated from `patternSim`.
 #' @param normalized Set to TRUE if you want to normalize the importance sampling ratios
 #'
-#' @return A `data.frame` with columns `r` and `border`, giving the estimated
+#' @return A `data.frame` with columns `r` and `trans`, giving the estimated
 #' unnormalized K-function under the target parameters.
 #'
 #' @export
@@ -107,20 +107,23 @@ K_lambda_importance_sampling <- function(w_is, K_lambda_baseline, r_vec = NULL,
     w_is <- w_is/sum(w_is)
   }
 
-  K_res$border <- K_lambda_baseline[[1]]$border*w_is[1]
+  K_res$trans <- K_lambda_baseline[[1]]$trans*w_is[1]
   for (i in 2:length(K_lambda_baseline)) {
-    K_res$border <- K_res$border + K_lambda_baseline[[i]]$border*w_is[i]
+    K_res$trans <- K_res$trans + K_lambda_baseline[[i]]$trans*w_is[i]
   }
   if(!normalized){
-    K_res$border <- K_res$border/length(K_lambda_baseline)
+    K_res$trans <- K_res$trans/length(K_lambda_baseline)
   }
   return(K_res)
 }
 
 #' Estimate the "unnormalized" K-function directly for a given point pattern
 #' @description
-#' Estimate the "unnormalized" K-function directly for a given point pattern, this function does only the "border" correction.
-#' Pairwise distances and border-correction weights are computed once and reused for every radius in `r_vec`,
+#' Estimate the "unnormalized" K-function \eqn{\lambda^2K(r)} directly for a given point pattern,
+#' with the translation edge correction,
+#' \deqn{\sum_{i\neq j}\frac{1\{\|x_i-x_j\|\leq r\}}{|W\cap W_{x_i-x_j}|},}
+#' where \eqn{W} is the rectangle `xlim_thinned` \eqn{\times} `ylim_thinned`.
+#' Pairwise distances and translation-correction weights are computed once and reused for every radius in `r_vec`,
 #' via a sorted cumulative sum, rather than recomputing the full pairwise arrays per radius.
 #'
 #' @param pattern The point pattern to estimate for
@@ -137,7 +140,7 @@ estimate_K_lambda_baseline <- function(pattern, r_vec){
   ylim2 <- pattern$ylim_thinned[2]
 
   if(n < 2){
-    return(data.frame(r = r_vec, border = 0))
+    return(data.frame(r = r_vec, trans = 0))
   }
 
   dx <- outer(x, x, "-")
@@ -154,9 +157,9 @@ estimate_K_lambda_baseline <- function(pattern, r_vec){
   cw <- cumsum(w[ord])
 
   idx <- findInterval(r_vec, d)
-  border <- ifelse(idx == 0, 0, cw[pmax(idx, 1)])
+  pair_sum <- ifelse(idx == 0, 0, cw[pmax(idx, 1)])
 
-  return(data.frame(r = r_vec, border = 2 * border))
+  return(data.frame(r = r_vec, trans = 2 * pair_sum))
 }
 
 #' Calculate Poisson density of a parent process

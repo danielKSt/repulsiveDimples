@@ -7,7 +7,7 @@ vg_fixture <- function() {
   list(params = c(log(3), log(0.08), log(4), 1/2),
        repRange = 0.02,
        rho_hat = 12,
-       K_hat = data.frame(r = r, border = pi * r^2),
+       K_hat = data.frame(r = r, trans = pi * r^2),
        xlims = c(0, 1), ylims = c(0, 1), nSims = 6)
 }
 

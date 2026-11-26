@@ -37,6 +37,9 @@
 #' @param deltaMax Greatest trust region radius allowed.
 #' @param deltaMin Convergence tolerance for trust region radius.
 #' @param wq Weights for contrast function.
+#' @param r0 Smallest radius included in the contrast. Rows of `K_hat` with a radius below `r0`
+#' are dropped before fitting, so the K part of the contrast is integrated from `r0` to
+#' the largest radius of `K_hat`. The default 0 uses all of `K_hat`.
 #' @param normalized Normalize IS weights?
 #' @param eta_trust Smallest effective sample size, as a fraction of `nSims`, an iterate
 #' proposed by \code{\link{trust_step}} is allowed to have. Iterates the importance
@@ -178,7 +181,7 @@
 #' @export
 trust_region_loop <- function(params, parFreeIndex, kernelType = "thomas", repRange, thinningType = 2,
                               rho_hat, K_hat, xlims, ylims, nSims, deltaInit, eta, deltaMax, deltaMin = 0.0001,
-                              wq = c(1000, 1/4), normalized = TRUE, eta_trust = 0.6,
+                              wq = c(1000, 1/4), r0 = 0, normalized = TRUE, eta_trust = 0.6,
                               eta_converged = 0.99, validate.converged = FALSE,
                               subsection_count = 11, line_iterations = 4, max.directions = 1,
                               carry.directions = FALSE, carry.ess_bounds = TRUE,
@@ -187,6 +190,7 @@ trust_region_loop <- function(params, parFreeIndex, kernelType = "thomas", repRa
                               tol = 10^-8, max.iter = 1000, printProgress = FALSE,
                               label = "trust region"){
   method <- match.arg(method)
+  K_hat <- restrict_K_hat(K_hat, r0)
   # Initialize output: ----
   nSteps <- 1
   x_sequence <- matrix(data = NA, nrow = max.iter, ncol = length(parFreeIndex))
@@ -452,4 +456,31 @@ evaluate_improvement <- function(f_old, f_new, x_new, x_old, delta, deltaMax, et
   }
   return(list(x = x_res, newDelta = delta,
               f_val = f_res, updated = updated))
+}
+
+#' Restrict an estimated K-function to radii at or above r0
+#' @description
+#' Drops the rows of `K_hat` with a radius below `r0`, so that the contrast is only taken over
+#' `[r0, max(K_hat$r)]`. Every K-function the fit compares against is evaluated on
+#' `K_hat$r`, so this is the only place the lower limit has to be applied.
+#'
+#' @param K_hat Estimated K-function, a `data.frame` or `fv` object with columns `r` and
+#' `trans`. A `border` column is accepted in place of `trans`, since K-functions saved
+#' before the column was renamed call it that, even though the package's own
+#' estimates in them were already translation-corrected.
+#' @param r0 Smallest radius to keep.
+#'
+#' @return A `data.frame` with columns `r` and `trans`.
+restrict_K_hat <- function(K_hat, r0 = 0){
+  if(is.null(K_hat$trans) && !is.null(K_hat$border)){
+    K_hat <- data.frame(r = K_hat$r, trans = K_hat$border)
+  }
+  if(is.null(K_hat$trans)){
+    stop("K_hat must have columns r and trans.")
+  }
+  keep <- K_hat$r >= r0
+  if(sum(keep) < 2){
+    stop("r0 must leave at least two radii of K_hat.")
+  }
+  return(data.frame(r = K_hat$r[keep], trans = K_hat$trans[keep]))
 }
