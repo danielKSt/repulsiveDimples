@@ -1,6 +1,7 @@
 # Trust region fits for the Variance gamma studies, the twin of
-# simulation_studies/Thomas/Trust_region/quad_run.R: 200 fits per study at each of
-# nSims = 500, 1000, 5000 and 10000, with the quadratic trust step and no pre-fitting.
+# simulation_studies/Thomas/Trust_region/quad_run.R: 200 fits per study and thinning type
+# at each of nSims = 500, 1000, 5000 and 10000, with the quadratic trust step and no
+# pre-fitting, for studies 1-3 (nu = 1/2) and 4-6 (nu = 5/2) and all three thinning types.
 # Needs the data from data_generation.R.
 #
 # Run from the project root. The results are saved in
@@ -19,8 +20,8 @@ dry_run <- "--dry-run" %in% commandArgs(trailingOnly = TRUE)
 # The Thomas studies used 0.6.
 eta_trust <- 0.6
 
-studyNrs <- 1:3
-thinningTypes <- 2
+studyNrs <- 1:6
+thinningTypes <- 1:3
 
 if(dry_run){
   # The parent of tempdir() is the per-user temporary folder, which outlives this R
