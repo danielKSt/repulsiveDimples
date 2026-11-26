@@ -33,4 +33,10 @@ whatever \code{scale} and \code{nu}. Both are therefore returned alongside the d
 seed \code{daughter_kernel_cache}, so the ensemble is passed over once instead of once here
 and again on the first evaluation, and every weight taken against the ensemble uses the
 same grid for its numerator as this baseline does for its denominator.
+
+The log-sums over the daughters are computed here with \code{besselK}, and no kernel grid
+(see \code{\link{varGamma_kernel_grid}}) is built. Many ensembles are only ever
+evaluated at their own parameters, those simulated for a trust step that is then
+rejected, and for those building it would cost several times what it saves. The first
+evaluation at another \code{scale} or \code{nu} builds it instead.
 }

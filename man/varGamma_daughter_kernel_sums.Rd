@@ -51,4 +51,8 @@ computed from a precomputed table of \eqn{J}, see \code{\link{varGamma_window_gr
 for how and how accurately. This function builds that table for its one pattern on
 the fly; \code{\link{importance_sampling_weights_varGamma}} builds it once per
 ensemble instead and reuses it for every \eqn{(\sigma, \nu)}.
+
+The log-sums are computed here with \code{besselK}. When an ensemble is searched over,
+\code{\link{importance_sampling_weights_varGamma}} takes them from a precomputed table
+instead, see \code{\link{varGamma_kernel_grid}}.
 }

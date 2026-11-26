@@ -21,7 +21,8 @@ varGamma_window_grid(patternSim, scale, nu, h = 0.25, lapply_fun = lapply)
 }
 \value{
 A list with \code{t} (the grid), \code{h} (its spacing), \code{J0} (\eqn{J_0} per pattern), \code{D}
-(a matrix with one row of \eqn{D_k} per pattern and one column per grid point), and
+(a matrix with one row of \eqn{D_k} per pattern and one column per grid point), \code{area_W}
+and \code{n_daughter} (the window area and daughter count of every pattern), and
 \code{fingerprint} (identifying the ensemble the grid was built for).
 }
 \description{

@@ -47,13 +47,22 @@ to \code{nu}.}
 \item{parallel}{Set to TRUE to use parallel computing}
 
 \item{daughter_kernel_cache}{Optional cache from a previous call on the same ensemble,
-as returned in this call's output: a list with \code{scale}, \code{nu}, per-pattern
-\code{kernel_sums}, and \code{window_grid} (see \code{\link{varGamma_window_grid}}). The kernel
-sums, which depend on \code{scale} and \code{nu} but not on \code{mu}, are only recomputed when \code{scale}
-or \code{nu} differs from the cached value. The window grid does not depend on the
-parameters at all, so it is kept across changes of \code{scale} and \code{nu}, and only extended
-when they reach outside what it covers. A grid built for a different ensemble is
-detected and rebuilt. Pass \code{NULL} (the default) to start from scratch.}
+or from \code{\link{baseline_densities_varGamma}}, as returned in this call's output: a
+list with \code{scale}, \code{nu}, \code{kernel_sums} (the sums of
+\code{\link{varGamma_daughter_kernel_sums}}, each a vector over the patterns), \code{window_grid} (see
+\code{\link{varGamma_window_grid}}) and \code{kernel_grid} (see
+\code{\link{varGamma_kernel_grid}}, \code{NULL} until built). The kernel sums, which depend
+on \code{scale} and \code{nu} but not on \code{mu}, are only recomputed when \code{scale} or \code{nu} differs
+from the cached value. Neither grid depends on the parameters, so both are kept across
+changes of \code{scale} and \code{nu}, and only extended or refined when they reach outside what
+a grid covers. A grid built for a different ensemble is detected and rebuilt.
+
+Passing a cache also says that the ensemble will be evaluated at many \verb{(scale, nu)}, as
+the trust region does. The kernel grid, which costs about as much to build as four or
+five evaluations of the log-sums with \code{besselK}, is then built on the first \verb{(scale, nu)}
+the cache does not hold, and every later evaluation takes the log-sums from it. Without
+a cache (the default \code{NULL}) the call is taken to be a one-off, and the log-sums come
+from \code{besselK}.}
 }
 \value{
 A list with \code{w_is} (the importance sampling weights) and \code{daughter_kernel_cache}

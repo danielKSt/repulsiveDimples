@@ -201,8 +201,102 @@ test_that("the weights keep one window grid for the target and the baseline", {
                                                  daughter_kernel_cache = first$daughter_kernel_cache)
   expect_identical(second$daughter_kernel_cache$window_grid, grid)
   expect_equal(second$daughter_kernel_cache$scale, 0.31)
+  # With a cache the log-sums come from the kernel grid, without one from besselK, which
+  # agree to about 1e-9.
   fresh <- importance_sampling_weights_varGamma(kappa = 1, mu = 3, scale = 0.31, nu = 0.7,
                                                 kappa_0 = 1, mu_0 = 3, scale_0 = scale, nu_0 = 1/2,
                                                 patternSim = pats)
-  expect_equal(second$w_is, fresh$w_is, tolerance = 1e-12)
+  expect_equal(second$w_is, fresh$w_is, tolerance = 1e-7)
+})
+
+# The log-sums sum_x log sum_c k(x - c) of every pattern with besselK, the reference for the
+# kernel grid.
+log_sums_bessel <- function(pats, s, nu) {
+  vapply(pats, function(p) varGamma_log_kernel_sum(p$parent, p$daughter, s, nu), numeric(1))
+}
+
+test_that("the kernel grid matches the log-sums across nu and scale", {
+  pats <- patterns()
+  for (nu in c(-0.9, -0.4, 0.5, 2, 5, 10)) {
+    for (s in c(0.05, 0.3, 1)) {
+      grid <- varGamma_kernel_grid(pats, scale = s, nu = nu)
+      expect_lt(max(abs(varGamma_kernel_log_sums(grid, s, nu) - log_sums_bessel(pats, s, nu))), 1e-8,
+                label = sprintf("error in the log-sums at nu = %g, scale = %g", nu, s))
+    }
+  }
+  # and, independently of besselK, the exponential kernel at nu = 1/2
+  grid <- varGamma_kernel_grid(pats, scale = scale, nu = 1/2)
+  exact <- vapply(pats, function(p) sum(log(rowSums(k_exp(sqrt(varGamma_squared_distances(p)))))),
+                  numeric(1))
+  expect_equal(varGamma_kernel_log_sums(grid, scale, 1/2), exact, tolerance = 1e-10)
+})
+
+test_that("the kernel grid is refined for a daughter far from every parent", {
+  # The second daughter is 40 scales from the one parent, which makes its integrand narrow.
+  s <- 0.05
+  pattern <- list(parent = data.frame(x = 0.5, y = 0.5),
+                  daughter = data.frame(x = c(0.51, 0.5 + 40*s), y = c(0.5, 0.5)),
+                  xlim_unthinned = xl, ylim_unthinned = yl)
+  grid <- varGamma_kernel_grid(list(pattern), scale = s, nu = 1/2)
+  expect_lt(grid$h, 0.25)
+  expect_equal(varGamma_kernel_log_sums(grid, s, 1/2),
+               log_sums_bessel(list(pattern), s, 1/2), tolerance = 1e-9)
+})
+
+test_that("a kernel grid used at other parameters is extended and refined to cover them", {
+  pats <- patterns()
+  grid <- varGamma_kernel_grid(pats, scale = scale, nu = 1/2)
+  check <- function(g, s, nu) {
+    expect_lt(max(abs(varGamma_kernel_log_sums(g, s, nu) - log_sums_bessel(pats, s, nu))), 1e-8)
+  }
+  # a much larger scale needs the grid to reach further to the right
+  wide <- varGamma_kernel_grid_cover(grid, pats, scale = 3, nu = 1/2)
+  expect_gt(max(wide$t), max(grid$t))
+  expect_identical(wide$t[seq_along(grid$t)], grid$t)
+  check(wide, 3, 1/2)
+  # a large nu, or a small scale, needs a finer grid
+  fine_nu <- varGamma_kernel_grid_cover(grid, pats, scale = scale, nu = 10)
+  expect_lt(fine_nu$h, grid$h)
+  check(fine_nu, scale, 10)
+  fine_scale <- varGamma_kernel_grid_cover(grid, pats, scale = 0.02, nu = 1/2)
+  expect_lt(fine_scale$h, grid$h)
+  check(fine_scale, 0.02, 1/2)
+  # and one that already covers the parameters is left as it is
+  expect_identical(varGamma_kernel_grid_cover(wide, pats, scale = scale, nu = 1/2), wide)
+})
+
+test_that("a kernel grid from another ensemble is rebuilt rather than used", {
+  pats <- patterns()
+  stale <- varGamma_kernel_grid(patterns(n = 4)[c(2, 1, 4, 3)], scale = scale, nu = 1/2)
+  rebuilt <- varGamma_kernel_grid_cover(stale, pats, scale = scale, nu = 1/2)
+  expect_lt(max(abs(varGamma_kernel_log_sums(rebuilt, scale, 1/2) - log_sums_bessel(pats, scale, 1/2))),
+            1e-8)
+})
+
+test_that("the kernel grid is only built once an ensemble with a cache moves", {
+  pats <- patterns()
+  weights <- function(s, mu = 3, cache = NULL, log_fCond_theta_0 = NULL) {
+    importance_sampling_weights_varGamma(kappa = 1, mu = mu, scale = s, nu = 1/2,
+                                         kappa_0 = 1, mu_0 = 3, scale_0 = scale, patternSim = pats,
+                                         log_fCond_theta_0 = log_fCond_theta_0,
+                                         daughter_kernel_cache = cache)
+  }
+  # a one-off call, without a cache, does not build it
+  expect_null(weights(0.33)$daughter_kernel_cache$kernel_grid)
+
+  # nor does the baseline, or a call that leaves scale and nu where the baseline has them
+  base <- baseline_densities_varGamma(pats, c(0, log(scale), log(3), 1/2))
+  expect_null(base$daughter_kernel_cache$kernel_grid)
+  same <- weights(scale, mu = 3.2, cache = base$daughter_kernel_cache,
+                  log_fCond_theta_0 = base$log_fCond_theta_0)
+  expect_null(same$daughter_kernel_cache$kernel_grid)
+
+  # the first move of scale builds it, and the next keeps it
+  moved <- weights(0.33, cache = same$daughter_kernel_cache, log_fCond_theta_0 = base$log_fCond_theta_0)
+  grid <- moved$daughter_kernel_cache$kernel_grid
+  expect_false(is.null(grid))
+  expect_equal(moved$w_is, weights(0.33, log_fCond_theta_0 = base$log_fCond_theta_0)$w_is, tolerance = 1e-7)
+  again <- weights(0.31, cache = moved$daughter_kernel_cache, log_fCond_theta_0 = base$log_fCond_theta_0)
+  expect_identical(again$daughter_kernel_cache$kernel_grid, grid)
+  expect_equal(again$w_is, weights(0.31, log_fCond_theta_0 = base$log_fCond_theta_0)$w_is, tolerance = 1e-7)
 })

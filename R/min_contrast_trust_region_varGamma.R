@@ -96,6 +96,12 @@ min_contrast_trust_region_varGamma <- function(params, parFreeIndex = c(1, 2, 3)
 #' and again on the first evaluation, and every weight taken against the ensemble uses the
 #' same grid for its numerator as this baseline does for its denominator.
 #'
+#' The log-sums over the daughters are computed here with `besselK`, and no kernel grid
+#' (see \code{\link{varGamma_kernel_grid}}) is built. Many ensembles are only ever
+#' evaluated at their own parameters, those simulated for a trust step that is then
+#' rejected, and for those building it would cost several times what it saves. The first
+#' evaluation at another `scale` or `nu` builds it instead.
+#'
 #' @param patternSim List of simulated point patterns.
 #' @param params Parameter vector `(log kappa, log scale, log mu, nu)` that `patternSim`
 #' was simulated from.
@@ -121,8 +127,7 @@ baseline_densities_varGamma <- function(patternSim, params, printProgress = FALS
                                           window_grid = window_grid,
                                           lapply_fun = if(printProgress) mcprogress::pmclapply
                                                        else parallel::mclapply)
-  log_fCond_theta_0 <- vapply(sums_0$kernel_sums, daughter_log_density_from_sums,
-                              numeric(1), mu = mu_0)
+  log_fCond_theta_0 <- daughter_log_density_from_sums(mu = mu_0, kernel_sums = sums_0$kernel_sums)
 
   return(list(log_f_kappa_0 = log_f_kappa_0,
               log_fCond_theta_0 = log_fCond_theta_0,

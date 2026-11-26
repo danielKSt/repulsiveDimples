@@ -9,6 +9,8 @@ varGamma_ensemble_kernel_sums(
   scale,
   nu,
   window_grid = NULL,
+  kernel_grid = NULL,
+  use_kernel_grid = FALSE,
   lapply_fun = lapply
 )
 }
@@ -22,16 +24,26 @@ varGamma_ensemble_kernel_sums(
 
 \item{window_grid}{A grid from \code{\link{varGamma_window_grid}}, or \code{NULL}.}
 
+\item{kernel_grid}{A grid from \code{\link{varGamma_kernel_grid}}, or \code{NULL}. Only used,
+and only built when \code{NULL}, with \code{use_kernel_grid}.}
+
+\item{use_kernel_grid}{Whether to take the log-sums from a kernel grid rather than
+computing them with \code{besselK}.}
+
 \item{lapply_fun}{The \code{lapply} to tabulate the patterns with, for instance
 \code{\link[parallel]{mclapply}}.}
 }
 \value{
-A list with \code{kernel_sums} (one list per pattern, as returned by
-\code{\link{varGamma_daughter_kernel_sums}}) and \code{window_grid}.
+A list with \code{kernel_sums} (the sums \code{\link{varGamma_daughter_kernel_sums}}
+returns, each a vector over the patterns, so that
+\code{\link{daughter_log_density_from_sums}} combines them for every pattern at once),
+\code{window_grid}, and \code{kernel_grid} (as passed when not used).
 }
 \description{
 \code{\link{varGamma_daughter_kernel_sums}} for a whole ensemble, with the window
 probabilities taken from a window grid shared by the ensemble (see
 \code{\link{varGamma_window_grid}}), which is made to cover \verb{(scale, nu)} first and
-returned for reuse.
+returned for reuse. The log-sums come from \code{besselK}, or, with \code{use_kernel_grid}, from
+a kernel grid (see \code{\link{varGamma_kernel_grid}}), likewise made to cover
+\verb{(scale, nu)} and returned.
 }

@@ -19,13 +19,22 @@
 #' @param patternSim List of point patterns to use for estimation
 #' @param parallel Set to TRUE to use parallel computing
 #' @param daughter_kernel_cache Optional cache from a previous call on the same ensemble,
-#' as returned in this call's output: a list with `scale`, `nu`, per-pattern
-#' `kernel_sums`, and `window_grid` (see \code{\link{varGamma_window_grid}}). The kernel
-#' sums, which depend on `scale` and `nu` but not on `mu`, are only recomputed when `scale`
-#' or `nu` differs from the cached value. The window grid does not depend on the
-#' parameters at all, so it is kept across changes of `scale` and `nu`, and only extended
-#' when they reach outside what it covers. A grid built for a different ensemble is
-#' detected and rebuilt. Pass `NULL` (the default) to start from scratch.
+#' or from \code{\link{baseline_densities_varGamma}}, as returned in this call's output: a
+#' list with `scale`, `nu`, `kernel_sums` (the sums of
+#' \code{\link{varGamma_daughter_kernel_sums}}, each a vector over the patterns), `window_grid` (see
+#' \code{\link{varGamma_window_grid}}) and `kernel_grid` (see
+#' \code{\link{varGamma_kernel_grid}}, `NULL` until built). The kernel sums, which depend
+#' on `scale` and `nu` but not on `mu`, are only recomputed when `scale` or `nu` differs
+#' from the cached value. Neither grid depends on the parameters, so both are kept across
+#' changes of `scale` and `nu`, and only extended or refined when they reach outside what
+#' a grid covers. A grid built for a different ensemble is detected and rebuilt.
+#'
+#' Passing a cache also says that the ensemble will be evaluated at many `(scale, nu)`, as
+#' the trust region does. The kernel grid, which costs about as much to build as four or
+#' five evaluations of the log-sums with `besselK`, is then built on the first `(scale, nu)`
+#' the cache does not hold, and every later evaluation takes the log-sums from it. Without
+#' a cache (the default `NULL`) the call is taken to be a one-off, and the log-sums come
+#' from `besselK`.
 #'
 #' @return A list with `w_is` (the importance sampling weights) and `daughter_kernel_cache`
 #' (to be passed back into the next call). When the target and simulation parameters
@@ -54,36 +63,45 @@ importance_sampling_weights_varGamma <- function(kappa, mu, scale, nu,
 
   # Daughters density
   # The kernel sums depend on scale and nu only, so they are computed once per (scale, nu)
-  # and reused. The window grid behind their window probabilities is kept even when
-  # (scale, nu) moves, since it depends on the ensemble alone.
-  window_grid <- daughter_kernel_cache$window_grid
+  # and reused. The grids behind them are kept even when (scale, nu) moves, since they
+  # depend on the ensemble alone. A cache marks an ensemble that is searched over, which is
+  # what makes the kernel grid worth building, see the documentation of
+  # daughter_kernel_cache.
+  use_kernel_grid <- !is.null(daughter_kernel_cache)
   if(is.null(daughter_kernel_cache) || !isTRUE(all.equal(daughter_kernel_cache$scale, scale)) ||
      !isTRUE(all.equal(daughter_kernel_cache$nu, nu))){
     sums <- varGamma_ensemble_kernel_sums(patternSim = patternSim, scale = scale, nu = nu,
-                                          window_grid = window_grid, lapply_fun = lapply_fun)
-    window_grid <- sums$window_grid
+                                          window_grid = daughter_kernel_cache$window_grid,
+                                          kernel_grid = daughter_kernel_cache$kernel_grid,
+                                          use_kernel_grid = use_kernel_grid,
+                                          lapply_fun = lapply_fun)
     daughter_kernel_cache <- list(scale = scale, nu = nu, kernel_sums = sums$kernel_sums,
-                                  window_grid = window_grid)
+                                  window_grid = sums$window_grid,
+                                  kernel_grid = sums$kernel_grid)
   }
 
-  log_fCond_theta <- vapply(daughter_kernel_cache$kernel_sums,
-                            daughter_log_density_from_sums, numeric(1), mu = mu)
+  # The kernel sums hold one vector per sum, over the patterns, so this combines them all
+  # at once.
+  log_fCond_theta <- daughter_log_density_from_sums(mu = mu, kernel_sums = daughter_kernel_cache$kernel_sums)
 
   if(is.null(log_fCond_theta_0)){
     if(isTRUE(all.equal(scale_0, scale)) && isTRUE(all.equal(nu_0, nu))){
       # Baseline and target share the kernel, so the kernel sums just computed are the
       # ones the baseline density needs as well, and only the mu-dependent combine differs.
-      log_fCond_theta_0 <- vapply(daughter_kernel_cache$kernel_sums,
-                                  daughter_log_density_from_sums, numeric(1), mu = mu_0)
+      log_fCond_theta_0 <- daughter_log_density_from_sums(mu = mu_0,
+                                                          kernel_sums = daughter_kernel_cache$kernel_sums)
     } else {
-      # The same window grid as the target, so that both sides of the weight carry the
-      # same approximation of the window probabilities.
+      # The same grids as the target, so that both sides of the weight carry the same
+      # approximations: the log-sums come from the kernel grid exactly when the cache
+      # holds one, and from besselK otherwise.
       sums_0 <- varGamma_ensemble_kernel_sums(patternSim = patternSim, scale = scale_0, nu = nu_0,
                                               window_grid = daughter_kernel_cache$window_grid,
+                                              kernel_grid = daughter_kernel_cache$kernel_grid,
+                                              use_kernel_grid = !is.null(daughter_kernel_cache$kernel_grid),
                                               lapply_fun = lapply_fun)
       daughter_kernel_cache$window_grid <- sums_0$window_grid
-      log_fCond_theta_0 <- vapply(sums_0$kernel_sums, daughter_log_density_from_sums,
-                                  numeric(1), mu = mu_0)
+      daughter_kernel_cache$kernel_grid <- sums_0$kernel_grid
+      log_fCond_theta_0 <- daughter_log_density_from_sums(mu = mu_0, kernel_sums = sums_0$kernel_sums)
     }
   }
 
@@ -157,6 +175,10 @@ varGamma_daughter_log_density <- function(pattern = NULL, mu, scale, nu,
 #' the fly; \code{\link{importance_sampling_weights_varGamma}} builds it once per
 #' ensemble instead and reuses it for every \eqn{(\sigma, \nu)}.
 #'
+#' The log-sums are computed here with `besselK`. When an ensemble is searched over,
+#' \code{\link{importance_sampling_weights_varGamma}} takes them from a precomputed table
+#' instead, see \code{\link{varGamma_kernel_grid}}.
+#'
 #' @param scale    Positive scalar. The scale \eqn{\sigma} of the kernel.
 #' @param nu       Scalar greater than -1. The shape \eqn{\nu} of the kernel.
 #' @param parent   A \code{data.frame} with columns \code{x} and \code{y} giving parent locations.
@@ -177,7 +199,7 @@ varGamma_daughter_kernel_sums <- function(pattern = NULL, scale, nu,
                     xlim_unthinned = xlim, ylim_unthinned = ylim)
   }
   sums <- varGamma_ensemble_kernel_sums(patternSim = list(pattern), scale = scale, nu = nu)
-  return(sums$kernel_sums[[1]])
+  return(lapply(sums$kernel_sums, function(v) v[1]))
 }
 
 #' Window grid for the Variance gamma window probabilities
@@ -226,7 +248,8 @@ varGamma_daughter_kernel_sums <- function(pattern = NULL, scale, nu,
 #' \code{\link[parallel]{mclapply}}.
 #'
 #' @return A list with `t` (the grid), `h` (its spacing), `J0` (\eqn{J_0} per pattern), `D`
-#' (a matrix with one row of \eqn{D_k} per pattern and one column per grid point), and
+#' (a matrix with one row of \eqn{D_k} per pattern and one column per grid point), `area_W`
+#' and `n_daughter` (the window area and daughter count of every pattern), and
 #' `fingerprint` (identifying the ensemble the grid was built for).
 #'
 varGamma_window_grid <- function(patternSim, scale, nu, h = 0.25, lapply_fun = lapply){
@@ -251,8 +274,13 @@ varGamma_window_grid <- function(patternSim, scale, nu, h = 0.25, lapply_fun = l
   t <- t_min + h*(0:ceiling((t_max - t_min)/h))
 
   rows <- varGamma_window_grid_rows(patternSim, t, lapply_fun)
+  # The window areas and daughter counts complete the kernel sums, and are kept here so as
+  # not to be collected from the patterns again on every evaluation.
   return(list(t = t, h = h, J0 = rows$J0, D = rows$D,
-              fingerprint = varGamma_window_grid_fingerprint(patternSim)))
+              area_W = vapply(patternSim, function(p) diff(p$xlim_unthinned)*diff(p$ylim_unthinned),
+                              numeric(1)),
+              n_daughter = vapply(patternSim, function(p) nrow(p$daughter), numeric(1)),
+              fingerprint = varGamma_grid_fingerprint(patternSim)))
 }
 
 #' Window probability sums from a Variance gamma window grid
@@ -270,10 +298,7 @@ varGamma_window_grid <- function(patternSim, scale, nu, h = 0.25, lapply_fun = l
 #' @return A vector with \eqn{\sum_{c \in C} p_W(c)} for each pattern.
 #'
 varGamma_window_sums <- function(window_grid, scale, nu){
-  a <- nu + 1
-  b <- 1/(2*scale^2)
-  t <- window_grid$t
-  w <- window_grid$h * exp(a*log(b) - lgamma(a) + a*t - b*exp(t))
+  w <- varGamma_mixing_weights(window_grid$t, window_grid$h, scale, nu)
   return(window_grid$J0 + drop(window_grid$D %*% w))
 }
 
@@ -294,30 +319,144 @@ varGamma_window_grid_cover <- function(window_grid, patternSim, scale, nu, lappl
     stop("nu must be greater than -1")
   }
   if(is.null(window_grid) ||
-     !identical(window_grid$fingerprint, varGamma_window_grid_fingerprint(patternSim))){
+     !identical(window_grid$fingerprint, varGamma_grid_fingerprint(patternSim))){
     return(varGamma_window_grid(patternSim = patternSim, scale = scale, nu = nu,
                                 lapply_fun = lapply_fun))
   }
-  # Refine, by tabulating the midpoints, until the spacing resolves g at this nu.
-  while(varGamma_window_grid_spacing(window_grid$h, nu) < window_grid$h){
-    t_mid <- window_grid$t[-length(window_grid$t)] + window_grid$h/2
-    rows <- varGamma_window_grid_rows(patternSim, t_mid, lapply_fun)
-    t_all <- c(window_grid$t, t_mid)
-    ord <- order(t_all)
-    window_grid$t <- t_all[ord]
-    window_grid$D <- cbind(window_grid$D, rows$D)[, ord, drop = FALSE]
-    window_grid$h <- window_grid$h/2
+  # Refine until the spacing resolves g at this nu, and extend to the right until the grid
+  # reaches past the bulk of the mixing density.
+  return(varGamma_grid_refine_extend(
+    grid = window_grid, field = "D",
+    h_needed = varGamma_window_grid_spacing(window_grid$h, nu),
+    t_need = varGamma_window_grid_t_max(scale, nu),
+    tabulate = function(t) varGamma_window_grid_rows(patternSim, t, lapply_fun)$D))
+}
+
+#' Kernel grid for the Variance gamma log-sums
+#'
+#' @description
+#' Tabulates, for every daughter of an ensemble, the part of
+#' \eqn{\sum_{c \in C} k(x - c)} that does not depend on the kernel parameters, so that
+#' the log-sums \eqn{\sum_{x \in X} \log \sum_{c \in C} k(x - c)} of every pattern can then
+#' be had at any \eqn{(\sigma, \nu)} with one matrix-vector product, see
+#' \code{\link{varGamma_kernel_log_sums}}.
+#'
+#' The kernel is the normal variance mixture
+#' \eqn{k(u) = \int_0^\infty \phi(u; s)\, \gamma(s)\,\mathrm{d}s}, with \eqn{\phi(\cdot; s)} the
+#' bivariate normal density with covariance \eqn{sI} and \eqn{\gamma} the
+#' Gamma\eqn{(\nu+1, 1/(2\sigma^2))} density of the mixing variance (see
+#' \code{\link{varGamma_window_grid}}). After substituting \eqn{t = \log s},
+#' \deqn{\sum_{c} k(x - c) = \int_{-\infty}^{\infty} g(t)\, S(x; e^t)\,\mathrm{d}t, \qquad
+#'   S(x; s) = \sum_{c} \phi(x - c; s),}
+#' with \eqn{g} as in \code{\link{varGamma_window_grid}}. \eqn{S} depends on the daughter and
+#' the parents only, and since no daughter sits exactly on a parent the integrand vanishes
+#' at both ends, so nothing has to be subtracted. The grid stores \eqn{S(x; e^{t_k})} for
+#' every daughter, and the sums are \eqn{h \sum_k g(t_k) S(x; e^{t_k})}.
+#'
+#' The grid starts at \eqn{t = \log(r^2) - 5}, with \eqn{r} the smallest distance between a
+#' daughter and a parent of the ensemble, below which every term of \eqn{S} is less than
+#' \eqn{e^{-70}} of its peak, and ends where the window grid does. Its spacing starts at `h`
+#' and is halved until both \eqn{(\nu + 1) h^2 \le 3/8}, as for the window grid, and
+#' \eqn{z h^2 \le 1}, with \eqn{z} the largest distance from a daughter to its nearest
+#' parent, in units of \eqn{\sigma}. The integrand of a daughter whose parents are all
+#' \eqn{z} scales away narrows like \eqn{z^{-1/2}}, and the relative error of its sum is about
+#' \eqn{\exp(-2\pi^2/(z h^2))}, so the second condition holds it near \eqn{3 \cdot 10^{-9}}.
+#' Neither end depends on \eqn{(\sigma, \nu)} other than the right one, so a grid is
+#' extended to the right, or refined, when later used at a \eqn{(\sigma, \nu)} that needs it.
+#'
+#' The table has one row per daughter of the ensemble and, at the default spacing, around a
+#' hundred columns: about 20 MB for 1000 patterns of 30 daughters.
+#'
+#' @inheritParams varGamma_window_grid
+#' @param patternSim List of point patterns, each with `parent`, `daughter`, `xlim_unthinned`
+#' and `ylim_unthinned`.
+#'
+#' @return A list with `t` (the grid), `h` (its spacing), `S` (a matrix with one row per
+#' daughter of the ensemble, the patterns one after another, and one column per grid
+#' point), `pattern` (the pattern of every row of `S`), `n_pattern`, `near_max` (the
+#' largest distance from a daughter to its nearest parent), and `fingerprint`
+#' (identifying the ensemble the grid was built for).
+varGamma_kernel_grid <- function(patternSim, scale, nu, h = 0.25, lapply_fun = lapply){
+  if(!(nu > -1)){
+    stop("nu must be greater than -1")
   }
-  # Extend to the right until the grid reaches past the bulk of the mixing density.
-  t_last <- window_grid$t[length(window_grid$t)]
-  t_need <- varGamma_window_grid_t_max(scale, nu)
-  if(t_last < t_need){
-    t_new <- t_last + window_grid$h*seq_len(ceiling((t_need + 2 - t_last)/window_grid$h))
-    rows <- varGamma_window_grid_rows(patternSim, t_new, lapply_fun)
-    window_grid$t <- c(window_grid$t, t_new)
-    window_grid$D <- cbind(window_grid$D, rows$D)
+  side <- max(vapply(patternSim, function(p) max(diff(p$xlim_unthinned), diff(p$ylim_unthinned)),
+                     numeric(1)))
+  # The closest daughter-parent pair, and the largest distance from a daughter to its
+  # nearest parent, of every pattern.
+  geometry <- lapply_fun(patternSim, function(p){
+    if(nrow(p$daughter) == 0 || nrow(p$parent) == 0) return(c(Inf, 0))
+    R2 <- varGamma_squared_distances(p)
+    c(min(R2), sqrt(max(apply(R2, 1, min))))
+  })
+  r2_min <- min(vapply(geometry, function(g) g[1], numeric(1)))
+  near_max <- max(vapply(geometry, function(g) g[2], numeric(1)))
+
+  h <- varGamma_kernel_grid_spacing(h, scale, nu, near_max)
+  t_max <- varGamma_window_grid_t_max(scale, nu) + 2
+  # A daughter closer to a parent than 1e-12 window sides sits on it to within the precision
+  # of the coordinates, and an ensemble without daughters has nothing to tabulate.
+  t_min <- if(is.finite(r2_min)) log(max(r2_min, (1e-12*side)^2)) - 5 else t_max - h
+  t_max <- max(t_max, t_min + h)
+  t <- t_min + h*(0:ceiling((t_max - t_min)/h))
+
+  n_daughter <- vapply(patternSim, function(p) nrow(p$daughter), numeric(1))
+  return(list(t = t, h = h, S = varGamma_kernel_grid_rows(patternSim, t, lapply_fun),
+              pattern = rep(seq_along(patternSim), n_daughter),
+              n_pattern = length(patternSim), near_max = near_max,
+              fingerprint = varGamma_grid_fingerprint(patternSim)))
+}
+
+#' Log-sums from a Variance gamma kernel grid
+#'
+#' @description
+#' Evaluates \eqn{\sum_{x \in X} \log \sum_{c \in C} k(x - c)} for every pattern a kernel grid
+#' was built for, at the kernel parameters \eqn{(\sigma, \nu)}, by the trapezoidal rule
+#' described in \code{\link{varGamma_kernel_grid}}. The grid has to cover
+#' \eqn{(\sigma, \nu)}; one that was built at, or made to cover, these parameters does.
+#'
+#' @param kernel_grid A grid from \code{\link{varGamma_kernel_grid}}.
+#' @param scale Positive scalar. The scale \eqn{\sigma} of the kernel.
+#' @param nu Scalar greater than -1. The shape \eqn{\nu} of the kernel.
+#'
+#' @return A vector with the log-sum of each pattern, 0 for a pattern without daughters.
+varGamma_kernel_log_sums <- function(kernel_grid, scale, nu){
+  out <- numeric(kernel_grid$n_pattern)
+  if(nrow(kernel_grid$S) == 0){
+    return(out)
   }
-  return(window_grid)
+  w <- varGamma_mixing_weights(kernel_grid$t, kernel_grid$h, scale, nu)
+  sums <- rowsum(log(drop(kernel_grid$S %*% w)), kernel_grid$pattern)
+  out[as.integer(rownames(sums))] <- sums[, 1]
+  return(out)
+}
+
+#' Make a Variance gamma kernel grid cover the kernel parameters
+#'
+#' @description
+#' Returns a kernel grid for `patternSim` that covers `(scale, nu)`: `kernel_grid` itself
+#' when it already does, `kernel_grid` refined or extended to the right when it does not,
+#' and a fresh grid from \code{\link{varGamma_kernel_grid}} when there is none or it was
+#' built for another ensemble.
+#'
+#' @inheritParams varGamma_kernel_grid
+#' @param kernel_grid A grid from \code{\link{varGamma_kernel_grid}}, or `NULL`.
+#'
+#' @return A kernel grid, see \code{\link{varGamma_kernel_grid}}.
+varGamma_kernel_grid_cover <- function(kernel_grid, patternSim, scale, nu, lapply_fun = lapply){
+  if(!(nu > -1)){
+    stop("nu must be greater than -1")
+  }
+  if(is.null(kernel_grid) ||
+     !identical(kernel_grid$fingerprint, varGamma_grid_fingerprint(patternSim))){
+    return(varGamma_kernel_grid(patternSim = patternSim, scale = scale, nu = nu,
+                                lapply_fun = lapply_fun))
+  }
+  return(varGamma_grid_refine_extend(
+    grid = kernel_grid, field = "S",
+    h_needed = varGamma_kernel_grid_spacing(kernel_grid$h, scale, nu, kernel_grid$near_max),
+    t_need = varGamma_window_grid_t_max(scale, nu),
+    tabulate = function(t) varGamma_kernel_grid_rows(patternSim, t, lapply_fun)))
 }
 
 #' Kernel sums for every pattern of a Variance gamma ensemble
@@ -326,25 +465,38 @@ varGamma_window_grid_cover <- function(window_grid, patternSim, scale, nu, lappl
 #' \code{\link{varGamma_daughter_kernel_sums}} for a whole ensemble, with the window
 #' probabilities taken from a window grid shared by the ensemble (see
 #' \code{\link{varGamma_window_grid}}), which is made to cover `(scale, nu)` first and
-#' returned for reuse.
+#' returned for reuse. The log-sums come from `besselK`, or, with `use_kernel_grid`, from
+#' a kernel grid (see \code{\link{varGamma_kernel_grid}}), likewise made to cover
+#' `(scale, nu)` and returned.
 #'
 #' @inheritParams varGamma_window_grid_cover
+#' @param kernel_grid A grid from \code{\link{varGamma_kernel_grid}}, or `NULL`. Only used,
+#' and only built when `NULL`, with `use_kernel_grid`.
+#' @param use_kernel_grid Whether to take the log-sums from a kernel grid rather than
+#' computing them with `besselK`.
 #'
-#' @return A list with `kernel_sums` (one list per pattern, as returned by
-#' \code{\link{varGamma_daughter_kernel_sums}}) and `window_grid`.
-varGamma_ensemble_kernel_sums <- function(patternSim, scale, nu, window_grid = NULL, lapply_fun = lapply){
+#' @return A list with `kernel_sums` (the sums \code{\link{varGamma_daughter_kernel_sums}}
+#' returns, each a vector over the patterns, so that
+#' \code{\link{daughter_log_density_from_sums}} combines them for every pattern at once),
+#' `window_grid`, and `kernel_grid` (as passed when not used).
+varGamma_ensemble_kernel_sums <- function(patternSim, scale, nu, window_grid = NULL,
+                                          kernel_grid = NULL, use_kernel_grid = FALSE,
+                                          lapply_fun = lapply){
   window_grid <- varGamma_window_grid_cover(window_grid = window_grid, patternSim = patternSim,
                                             scale = scale, nu = nu, lapply_fun = lapply_fun)
   S_pW <- varGamma_window_sums(window_grid, scale = scale, nu = nu)
-  sumLogK <- lapply_fun(patternSim, function(p){
-    varGamma_log_kernel_sum(parent = p$parent, daughter = p$daughter, scale = scale, nu = nu)
-  })
-  kernel_sums <- lapply(seq_along(patternSim), function(i){
-    p <- patternSim[[i]]
-    list(area_W = diff(p$xlim_unthinned)*diff(p$ylim_unthinned), S_pW = S_pW[i],
-         sumLogK = sumLogK[[i]], nDaughter = nrow(p$daughter))
-  })
-  return(list(kernel_sums = kernel_sums, window_grid = window_grid))
+  if(use_kernel_grid){
+    kernel_grid <- varGamma_kernel_grid_cover(kernel_grid = kernel_grid, patternSim = patternSim,
+                                              scale = scale, nu = nu, lapply_fun = lapply_fun)
+    sumLogK <- varGamma_kernel_log_sums(kernel_grid, scale = scale, nu = nu)
+  } else {
+    sumLogK <- vapply(lapply_fun(patternSim, function(p){
+      varGamma_log_kernel_sum(parent = p$parent, daughter = p$daughter, scale = scale, nu = nu)
+    }), function(v) v, numeric(1))
+  }
+  kernel_sums <- list(area_W = window_grid$area_W, S_pW = S_pW, sumLogK = sumLogK,
+                      nDaughter = window_grid$n_daughter)
+  return(list(kernel_sums = kernel_sums, window_grid = window_grid, kernel_grid = kernel_grid))
 }
 
 # \sum_i \log \sum_j k(x_i - c_j) for the Variance gamma kernel.
@@ -382,9 +534,70 @@ varGamma_window_grid_rows <- function(patternSim, t, lapply_fun = lapply){
                          byrow = TRUE)))
 }
 
+# S(x; e^{t_k}) = sum_c phi(x - c; e^{t_k}) of a kernel grid, one row per daughter of the
+# ensemble, the patterns one after another.
+varGamma_kernel_grid_rows <- function(patternSim, t, lapply_fun = lapply){
+  s <- exp(t)
+  blocks <- lapply_fun(patternSim, function(p){
+    n_d <- nrow(p$daughter)
+    if(n_d == 0){
+      return(matrix(0, nrow = 0, ncol = length(s)))
+    }
+    R2 <- varGamma_squared_distances(p)
+    matrix(vapply(s, function(s_k) rowSums(exp(-R2/(2*s_k)))/(2*pi*s_k), numeric(n_d)),
+           nrow = n_d)
+  })
+  do.call(rbind, blocks)
+}
+
+# Squared distances between the daughters (rows) and the parents (columns) of a pattern.
+varGamma_squared_distances <- function(p){
+  outer(p$daughter$x, p$parent$x, "-")^2 + outer(p$daughter$y, p$parent$y, "-")^2
+}
+
+# The trapezoid weights h g(t_k) of a grid, with g the density of t = log s for the mixing
+# variance s of the kernel at (scale, nu).
+varGamma_mixing_weights <- function(t, h, scale, nu){
+  a <- nu + 1
+  b <- 1/(2*scale^2)
+  h*exp(a*log(b) - lgamma(a) + a*t - b*exp(t))
+}
+
+# Refines a grid, by tabulating the midpoints, until its spacing is h_needed, and extends
+# it to the right, when it ends before t_need, to 2 past t_need. `field` names the matrix
+# of tabulated values, one column per grid point, and `tabulate(t)` gives its columns at
+# the grid points t. h_needed is the spacing halved a whole number of times.
+varGamma_grid_refine_extend <- function(grid, field, h_needed, t_need, tabulate){
+  while(grid$h > h_needed){
+    t_mid <- grid$t[-length(grid$t)] + grid$h/2
+    t_all <- c(grid$t, t_mid)
+    ord <- order(t_all)
+    grid$t <- t_all[ord]
+    grid[[field]] <- cbind(grid[[field]], tabulate(t_mid))[, ord, drop = FALSE]
+    grid$h <- grid$h/2
+  }
+  t_last <- grid$t[length(grid$t)]
+  if(t_last < t_need){
+    t_new <- t_last + grid$h*seq_len(ceiling((t_need + 2 - t_last)/grid$h))
+    grid$t <- c(grid$t, t_new)
+    grid[[field]] <- cbind(grid[[field]], tabulate(t_new))
+  }
+  grid
+}
+
 # Largest grid spacing, no larger than h, that resolves the mixing density at nu.
 varGamma_window_grid_spacing <- function(h, nu){
   while((nu + 1)*h^2 > 3/8){
+    h <- h/2
+  }
+  h
+}
+
+# Largest grid spacing, no larger than h, that resolves both the mixing density at nu and
+# the integrand of the daughter furthest from its nearest parent, near_max away, at scale.
+varGamma_kernel_grid_spacing <- function(h, scale, nu, near_max){
+  z <- near_max/scale
+  while((nu + 1)*h^2 > 3/8 || z*h^2 > 1){
     h <- h/2
   }
   h
@@ -396,11 +609,18 @@ varGamma_window_grid_t_max <- function(scale, nu){
   log(2*scale^2*stats::qgamma(1e-20, shape = nu + 1, lower.tail = FALSE))
 }
 
-# Identifies the ensemble a window grid belongs to: the parent count and coordinate sums
-# of every pattern, and its window.
-varGamma_window_grid_fingerprint <- function(patternSim){
-  vapply(patternSim, function(p){
-    c(nrow(p$parent), if(nrow(p$parent) > 0) c(sum(p$parent$x), sum(p$parent$y)) else c(0, 0),
-      p$xlim_unthinned, p$ylim_unthinned)
-  }, numeric(7))
+# Identifies the ensemble a grid belongs to, cheaply enough to be checked on every
+# evaluation: the number of patterns, and the window and the counts and coordinate sums of
+# the parents and of the daughters of the first, middle and last pattern. It is a guard
+# against a cache from another ensemble, which would almost surely differ there, not a
+# proof that the ensemble is unchanged.
+varGamma_grid_fingerprint <- function(patternSim){
+  m <- length(patternSim)
+  if(m == 0){
+    return(0)
+  }
+  summarise <- function(pts) if(nrow(pts) > 0) c(nrow(pts), sum(pts$x), sum(pts$y)) else c(0, 0, 0)
+  c(m, unlist(lapply(patternSim[unique(c(1, ceiling(m/2), m))], function(p){
+    c(summarise(p$parent), summarise(p$daughter), p$xlim_unthinned, p$ylim_unthinned)
+  })))
 }
