@@ -16,6 +16,9 @@ Estimate the "unnormalized" K-function \eqn{\lambda^2K(r)} directly for a given 
 with the translation edge correction,
 \deqn{\sum_{i\neq j}\frac{1\{\|x_i-x_j\|\leq r\}}{|W\cap W_{x_i-x_j}|},}
 where \eqn{W} is the rectangle \code{xlim_thinned} \eqn{\times} \code{ylim_thinned}.
-Pairwise distances and translation-correction weights are computed once and reused for every radius in \code{r_vec},
-via a sorted cumulative sum, rather than recomputing the full pairwise arrays per radius.
+Only the pairs within \code{max(r_vec)} contribute, and they are found with
+\code{\link[spatstat.geom]{closepairs}}, without forming all \eqn{n(n-1)/2} distances,
+which on large windows cost far more than the estimate needs. Their distances and
+translation-correction weights are then reused for every radius in \code{r_vec}, via a
+sorted cumulative sum.
 }

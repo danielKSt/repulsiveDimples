@@ -123,16 +123,17 @@ K_lambda_importance_sampling <- function(w_is, K_lambda_baseline, r_vec = NULL,
 #' with the translation edge correction,
 #' \deqn{\sum_{i\neq j}\frac{1\{\|x_i-x_j\|\leq r\}}{|W\cap W_{x_i-x_j}|},}
 #' where \eqn{W} is the rectangle `xlim_thinned` \eqn{\times} `ylim_thinned`.
-#' Pairwise distances and translation-correction weights are computed once and reused for every radius in `r_vec`,
-#' via a sorted cumulative sum, rather than recomputing the full pairwise arrays per radius.
+#' Only the pairs within `max(r_vec)` contribute, and they are found with
+#' \code{\link[spatstat.geom]{closepairs}}, without forming all \eqn{n(n-1)/2} distances,
+#' which on large windows cost far more than the estimate needs. Their distances and
+#' translation-correction weights are then reused for every radius in `r_vec`, via a
+#' sorted cumulative sum.
 #'
 #' @param pattern The point pattern to estimate for
 #' @param r_vec Vector of radii to use
 #'
 #' @export
 estimate_K_lambda_baseline <- function(pattern, r_vec){
-  x     <- pattern$thinned$x
-  y     <- pattern$thinned$y
   n     <- nrow(pattern$thinned)
   xlim1 <- pattern$xlim_thinned[1]
   xlim2 <- pattern$xlim_thinned[2]
@@ -143,14 +144,14 @@ estimate_K_lambda_baseline <- function(pattern, r_vec){
     return(data.frame(r = r_vec, trans = 0))
   }
 
-  dx <- outer(x, x, "-")
-  dy <- outer(y, y, "-")
-  ut <- upper.tri(dx)
-  dx <- dx[ut]
-  dy <- dy[ut]
-
-  d <- sqrt(dx^2 + dy^2)
-  w <- 1 / ((xlim2 - xlim1 - abs(dx)) * (ylim2 - ylim1 - abs(dy)))
+  # Every unordered pair within the largest radius, once, a pair at exactly that radius
+  # included.
+  X <- spatstat.geom::ppp(pattern$thinned$x, pattern$thinned$y,
+                          window = spatstat.geom::owin(c(xlim1, xlim2), c(ylim1, ylim2)),
+                          check = FALSE)
+  pairs <- spatstat.geom::closepairs(X, rmax = max(r_vec), twice = FALSE, what = "all")
+  d <- pairs$d
+  w <- 1 / ((xlim2 - xlim1 - abs(pairs$dx)) * (ylim2 - ylim1 - abs(pairs$dy)))
 
   ord <- order(d)
   d <- d[ord]
